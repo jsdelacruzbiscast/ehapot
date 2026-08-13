@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eHapot · BISCAST SDS</title>
+  <script src="config.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    :root {
+      --navy:#0A2B4E; --blue:#1D5C9B; --gold:#D4A017; --light-gold:#F5C842;
+      --bg:#F4F7FC; --white:#FFFFFF; --text:#25364a; --danger:#C62828;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+      padding:24px;background:linear-gradient(135deg,var(--bg),#E8EDF5);
+      font-family:"Segoe UI",system-ui,sans-serif;color:var(--text)
+    }
+    .portal{
+      width:min(760px,100%);background:var(--white);border-radius:36px;padding:40px;
+      box-shadow:0 24px 80px rgba(10,43,78,.18);border-top:8px solid var(--gold)
+    }
+    .brand{text-align:center;margin-bottom:26px}
+    .logo{font-size:3.25rem;font-weight:800;color:var(--navy);letter-spacing:-1px}
+    .logo span{color:var(--gold)}
+    .subtitle{color:#5d6876;margin-top:4px}
+    .pin-panel{background:var(--bg);border:2px solid #DFE6EF;border-radius:24px;padding:18px;margin:24px 0}
+    label{display:block;font-weight:700;color:var(--navy);margin-bottom:8px}
+    .pin-row{display:flex;gap:10px}
+    input{
+      flex:1;min-width:0;border:2px solid #CBD5E1;border-radius:14px;padding:13px 16px;
+      font-size:1.15rem;text-align:center;letter-spacing:4px;color:var(--navy);background:#fff
+    }
+    input:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid var(--light-gold);outline-offset:3px}
+    button{
+      border:0;border-radius:14px;padding:12px 20px;background:var(--blue);color:#fff;
+      font-weight:700;cursor:pointer
+    }
+    button:hover{background:var(--navy)}
+    .hint,.error{font-size:.86rem;margin-top:8px}
+    .hint{color:#667085}.error{color:var(--danger);min-height:1.1em}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .card{
+      display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;
+      padding:24px 16px;border-radius:20px;text-decoration:none;background:var(--bg);
+      color:var(--navy);border:2px solid transparent;transition:.2s
+    }
+    .card:hover{border-color:var(--gold);transform:translateY(-2px)}
+    .card .icon{font-size:2.2rem}.card .label{font-weight:800}.card .desc{font-size:.82rem;color:#687386}
+    .card.admin{grid-column:1/-1;background:var(--navy);color:#fff}
+    .card.admin .desc{color:#c8d4e3}
+    .qr-button{width:100%;height:100%;font:inherit;background:var(--bg);color:var(--navy);border:2px solid transparent}
+    .qr-button:hover{background:var(--bg);border-color:var(--gold)}
+    footer{text-align:center;color:#8a94a3;font-size:.8rem;margin-top:26px}
+    dialog{border:0;border-radius:24px;padding:0;box-shadow:0 30px 90px rgba(0,0,0,.3);width:min(420px,90vw)}
+    dialog::backdrop{background:rgba(10,43,78,.65)}
+    .modal{padding:28px;text-align:center}
+    #qrCanvas{display:flex;justify-content:center;margin:18px auto}
+    .modal-actions{display:flex;gap:10px;justify-content:center;margin-top:18px}
+    @media(max-width:560px){.portal{padding:24px 16px}.grid{grid-template-columns:1fr}.card.admin{grid-column:auto}.pin-row{flex-direction:column}}
+  </style>
+</head>
+<body>
+<main class="portal">
+  <div class="brand">
+    <div class="logo">e<span>Hapot</span></div>
+    <div class="subtitle">BISCAST · Student Development Services · Interactive Q&amp;A Engine</div>
+  </div>
+
+  <section class="pin-panel" aria-labelledby="eventCodeLabel">
+    <label id="eventCodeLabel" for="eventPinInput">Public Event Code</label>
+    <div class="pin-row">
+      <input id="eventPinInput" type="text" inputmode="numeric" autocomplete="off"
+             maxlength="6" pattern="[0-9]{4,6}" aria-describedby="pinHint pinError">
+      <button id="setPinBtn" type="button">Set Code</button>
+    </div>
+    <div id="pinHint" class="hint">Use 4–6 digits. This code identifies the session; it is not the moderator password.</div>
+    <div id="pinError" class="error" aria-live="polite"></div>
+  </section>
+
+  <section class="grid" aria-label="eHapot interfaces">
+    <a id="projectorLink" class="card" target="_blank" rel="noopener noreferrer">
+      <span class="icon" aria-hidden="true">🖥️</span><span class="label">Projector View</span>
+      <span class="desc">Public big-screen display</span>
+    </a>
+
+    <a id="moderatorLink" class="card" target="_blank" rel="noopener noreferrer">
+      <span class="icon" aria-hidden="true">🎙️</span><span class="label">Moderator Panel</span>
+      <span class="desc">Private moderation controls</span>
+    </a>
+
+    <a id="submitLink" class="card" target="_blank" rel="noopener noreferrer">
+      <span class="icon" aria-hidden="true">📱</span><span class="label">Audience Entry</span>
+      <span class="desc">Submit a question</span>
+    </a>
+
+    <button id="qrBtn" class="card qr-button" type="button">
+      <span class="icon" aria-hidden="true">📲</span><span class="label">Show QR Code</span>
+      <span class="desc">Generated locally in this browser</span>
+    </button>
+
+    <a id="sheetLink" class="card admin" target="_blank" rel="noopener noreferrer">
+      <span class="icon" aria-hidden="true">📊</span><span class="label">View Audit Logs</span>
+      <span class="desc">Open QnA_Master and append-only Audit_Log</span>
+    </a>
+  </section>
+
+  <footer>eHapot v<span id="version"></span> · Event code ≠ moderator credential</footer>
+</main>
+
+<dialog id="qrDialog" aria-labelledby="qrTitle">
+  <div class="modal">
+    <h2 id="qrTitle">Audience QR Code</h2>
+    <p id="qrUrlText"></p>
+    <div id="qrCanvas" aria-label="QR code for audience entry"></div>
+    <div class="modal-actions">
+      <button id="closeQrBtn" type="button">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+
+  if (typeof CONFIG === 'undefined') {
+    document.body.innerHTML = '<main style="font-family:system-ui;padding:2rem"><h1>eHapot configuration error</h1><p>config.js could not be loaded.</p></main>';
+    throw new Error('CONFIG is not defined');
+  }
+
+  const pinInput = document.getElementById('eventPinInput');
+  const pinError = document.getElementById('pinError');
+  const projectorLink = document.getElementById('projectorLink');
+  const moderatorLink = document.getElementById('moderatorLink');
+  const submitLink = document.getElementById('submitLink');
+  const sheetLink = document.getElementById('sheetLink');
+  const qrBtn = document.getElementById('qrBtn');
+  const qrDialog = document.getElementById('qrDialog');
+  const qrCanvas = document.getElementById('qrCanvas');
+  const qrUrlText = document.getElementById('qrUrlText');
+
+  document.getElementById('version').textContent = CONFIG.VERSION;
+  sheetLink.href = CONFIG.SHEET_URL;
+
+  const pinRegex = new RegExp(CONFIG.EVENT_PIN_PATTERN);
+  pinInput.value = localStorage.getItem('eHapot_event_pin') || '1234';
+
+  function pageUrl(filename, pin) {
+    const url = new URL(filename, window.location.href);
+    url.search = '';
+    url.searchParams.set('pin', pin);
+    return url;
+  }
+
+  function validatePin(pin) {
+    return pinRegex.test(pin);
+  }
+
+  function updateLinks(showError = false) {
+    const pin = pinInput.value.trim();
+
+    if (!validatePin(pin)) {
+      if (showError) pinError.textContent = 'Enter a valid 4–6 digit event code.';
+      projectorLink.removeAttribute('href');
+      moderatorLink.removeAttribute('href');
+      submitLink.removeAttribute('href');
+      return false;
+    }
+
+    pinError.textContent = '';
+    localStorage.setItem('eHapot_event_pin', pin);
+    projectorLink.href = pageUrl('projector.html', pin).href;
+    moderatorLink.href = pageUrl('moderator.html', pin).href;
+    submitLink.href = pageUrl('submit.html', pin).href;
+    return true;
+  }
+
+  function showQr() {
+    if (!updateLinks(true)) return;
+    const audienceUrl = submitLink.href;
+
+    qrCanvas.replaceChildren();
+    qrUrlText.textContent = `Event ${pinInput.value.trim()}`;
+
+    if (typeof QRCode === 'undefined') {
+      qrCanvas.textContent = 'QR library could not be loaded. Use the Audience Entry link instead.';
+    } else {
+      new QRCode(qrCanvas, {
+        text: audienceUrl,
+        width: 260,
+        height: 260,
+        colorDark: '#0A2B4E',
+        colorLight: '#FFFFFF',
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    }
+    qrDialog.showModal();
+  }
+
+  document.getElementById('setPinBtn').addEventListener('click', () => updateLinks(true));
+  pinInput.addEventListener('input', () => {
+    pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 6);
+    updateLinks(false);
+  });
+  pinInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') updateLinks(true);
+  });
+  qrBtn.addEventListener('click', showQr);
+  document.getElementById('closeQrBtn').addEventListener('click', () => qrDialog.close());
+  qrDialog.addEventListener('click', e => {
+    if (e.target === qrDialog) qrDialog.close();
+  });
+
+  updateLinks(false);
+})();
+</script>
+</body>
+</html>

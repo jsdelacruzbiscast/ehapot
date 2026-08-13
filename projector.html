@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eHapot · Projector</title>
+  <script src="config.js"></script>
+  <style>
+    :root{--navy:#0A2B4E;--blue:#1D5C9B;--gold:#D4A017;--lg:#F5C842;--white:#fff}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--navy);min-height:100vh;display:flex;align-items:center;justify-content:center;
+      padding:32px 24px;color:#fff;font-family:"Segoe UI",system-ui,sans-serif}
+    .container{width:min(1200px,100%);text-align:center}
+    .header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--gold);
+      padding-bottom:16px;margin-bottom:32px;gap:12px;flex-wrap:wrap}
+    h1{margin:0;font-size:clamp(1.8rem,4vw,2.8rem);font-weight:300;letter-spacing:2px}
+    h1 span{color:var(--gold);font-weight:800}
+    .badge{background:var(--gold);color:var(--navy);padding:7px 20px;border-radius:999px;font-weight:800}
+    .pin{background:var(--navy);color:var(--lg);padding:3px 12px;border-radius:999px;margin-left:8px}
+    .on-air{background:#fff;color:var(--navy);padding:48px 32px;border-radius:36px;border:4px solid var(--gold);
+      min-height:280px;display:flex;flex-direction:column;justify-content:center;
+      box-shadow:0 20px 60px rgba(0,0,0,.35);animation:pulse 2.4s infinite ease-in-out}
+    @keyframes pulse{50%{border-color:var(--lg);box-shadow:0 0 40px 12px rgba(212,160,23,.22)}}
+    .label{text-transform:uppercase;letter-spacing:6px;color:var(--gold);font-weight:800}
+    .question{font-size:clamp(3rem,8vw,8rem);font-weight:800;line-height:1.15;overflow-wrap:anywhere;margin-top:12px}
+    .question.empty{font-size:clamp(2rem,4vw,4rem);font-weight:300;color:#9aa0a8}
+    .meta{margin-top:24px;font-size:clamp(1rem,2vw,1.6rem);color:#606b78}
+    .highlight{color:var(--blue);font-weight:700}
+    .deck{margin-top:30px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);
+      border-radius:26px;padding:22px 26px;text-align:left}
+    .deck h2{margin:0 0 14px;color:var(--lg);font-size:1rem;letter-spacing:3px;text-transform:uppercase}
+    .deck-list{display:flex;flex-direction:column;gap:10px;max-height:200px;overflow:auto}
+    .deck-item{display:flex;gap:12px;align-items:center;background:rgba(255,255,255,.06);border-left:4px solid var(--blue);
+      border-radius:12px;padding:12px 16px;font-size:1.2rem}
+    .dot{width:10px;height:10px;border-radius:50%;background:#4CAF50;flex:0 0 auto}
+    .d-text{flex:1}.d-meta{font-size:.8rem;color:#b3bbc7}
+    .deck-empty{color:rgba(255,255,255,.45);text-align:center;padding:16px}
+    .status{position:fixed;right:18px;bottom:12px;font-size:.75rem;color:rgba(255,255,255,.6)}
+    .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#F5C842}
+    .status-dot.online{background:#4CAF50}.status-dot.offline{background:#e53935}
+    .fatal{background:#fff3f3;color:#8a1c1c;border:3px solid #c62828;padding:24px;border-radius:20px;font-size:1.2rem}
+    @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+  </style>
+</head>
+<body>
+<main class="container">
+  <div class="header">
+    <h1>🎤 <span>e</span>Hapot Q&amp;A</h1>
+    <div class="badge">LIVE <span class="pin" id="pinDisplay">----</span></div>
+  </div>
+
+  <section class="on-air" aria-live="polite" aria-atomic="true">
+    <div class="label">📢 Now Answering</div>
+    <div id="onAirText" class="question empty">💡 Connecting…</div>
+    <div id="onAirMeta" class="meta">Connecting to eHapot</div>
+  </section>
+
+  <section class="deck" aria-labelledby="deckHeading">
+    <h2 id="deckHeading">⏳ Up Next (On Deck)</h2>
+    <div id="deckList" class="deck-list"><div class="deck-empty">Loading queue…</div></div>
+  </section>
+</main>
+
+<div class="status" aria-live="polite"><span id="statusDot" class="status-dot"></span><span id="statusText">Connecting…</span></div>
+
+<script>
+(() => {
+  'use strict';
+
+  if (typeof CONFIG === 'undefined') {
+    document.body.innerHTML = '<main style="font-family:system-ui;padding:2rem"><h1>eHapot configuration error</h1><p>config.js could not be loaded.</p></main>';
+    throw new Error('CONFIG is not defined');
+  }
+
+  const onAirText = document.getElementById('onAirText');
+  const onAirMeta = document.getElementById('onAirMeta');
+  const deckList = document.getElementById('deckList');
+  const pinDisplay = document.getElementById('pinDisplay');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+
+  const pinRegex = new RegExp(CONFIG.EVENT_PIN_PATTERN);
+  const eventPin = new URLSearchParams(location.search).get('pin') || '';
+  let timer = null;
+  let stopped = false;
+
+  pinDisplay.textContent = eventPin || '----';
+
+  function setStatus(mode, text) {
+    statusDot.className = 'status-dot' + (mode ? ` ${mode}` : '');
+    statusText.textContent = text;
+  }
+
+  function fatal(message) {
+    stopped = true;
+    clearTimeout(timer);
+    document.querySelector('.on-air').className = 'fatal';
+    document.querySelector('.on-air').replaceChildren(document.createTextNode(message));
+    document.querySelector('.deck').hidden = true;
+    setStatus('offline', 'Configuration error');
+  }
+
+  function requestUrl() {
+    const url = new URL(CONFIG.ENDPOINT);
+    url.searchParams.set('action', 'getProjectorFeed');
+    url.searchParams.set('pin', eventPin);
+    url.searchParams.set('_', Date.now().toString());
+    return url.href;
+  }
+
+  async function fetchJsonWithTimeout(url) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
+    try {
+      const res = await fetch(url, {method:'GET', cache:'no-store', signal:controller.signal});
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data || data.ok !== true) throw new Error(data?.error || 'Invalid backend response');
+      return data;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  function formatTime(value) {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  }
+
+  function renderOnAir(q) {
+    if (!q) {
+      onAirText.textContent = '💡 No live question';
+      onAirText.className = 'question empty';
+      onAirMeta.textContent = 'Waiting for the moderator to send a question to the screen';
+      return;
+    }
+
+    onAirText.textContent = String(q.text || '');
+    onAirText.className = 'question';
+
+    onAirMeta.replaceChildren();
+    onAirMeta.append(document.createTextNode('Asked by: '));
+    const who = document.createElement('span');
+    who.className = 'highlight';
+    who.textContent = q.submittedBy || 'Anonymous';
+    onAirMeta.append(who);
+
+    const t = formatTime(q.timestamp);
+    if (t) onAirMeta.append(document.createTextNode(` · ${t}`));
+  }
+
+  function renderDeck(items) {
+    deckList.replaceChildren();
+    if (!Array.isArray(items) || items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'deck-empty';
+      empty.textContent = '📭 No questions queued';
+      deckList.append(empty);
+      return;
+    }
+
+    for (const q of items) {
+      const row = document.createElement('div');
+      row.className = 'deck-item';
+
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.setAttribute('aria-hidden','true');
+
+      const text = document.createElement('span');
+      text.className = 'd-text';
+      text.textContent = q.text || '';
+
+      const meta = document.createElement('span');
+      meta.className = 'd-meta';
+      meta.textContent = `— ${q.submittedBy || 'Anonymous'}`;
+
+      row.append(dot, text, meta);
+      deckList.append(row);
+    }
+  }
+
+  function nextInterval() {
+    return document.hidden ? CONFIG.PROJECTOR_HIDDEN_POLL_INTERVAL : CONFIG.PROJECTOR_POLL_INTERVAL;
+  }
+
+  async function poll() {
+    if (stopped) return;
+    try {
+      const data = await fetchJsonWithTimeout(requestUrl());
+      renderOnAir(data.onAir || null);
+      renderDeck(data.onDeck || []);
+      setStatus('online','Live');
+    } catch (err) {
+      console.error('[eHapot projector]', err);
+      setStatus('offline', navigator.onLine ? 'Reconnecting…' : 'Offline');
+      // Preserve last known content.
+    } finally {
+      if (!stopped) timer = setTimeout(poll, nextInterval());
+    }
+  }
+
+  if (!CONFIG || !CONFIG.ENDPOINT) fatal('eHapot configuration is unavailable.');
+  else if (!pinRegex.test(eventPin)) fatal('Invalid or missing event code. Open this projector from the eHapot launchpad.');
+  else {
+    document.addEventListener('visibilitychange', () => {
+      clearTimeout(timer);
+      timer = setTimeout(poll, document.hidden ? nextInterval() : 0);
+    });
+    window.addEventListener('online', () => { clearTimeout(timer); timer = setTimeout(poll,0); });
+    window.addEventListener('offline', () => setStatus('offline','Offline'));
+    poll();
+  }
+})();
+</script>
+</body>
+</html>
