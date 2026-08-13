@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eHapot · BISCAST SDS</title>
+    <script src="config.js"></script>
+    <style>
+        :root {
+            --biscast-navy: #0A2B4E;
+            --biscast-blue: #1D5C9B;
+            --biscast-gold: #D4A017;
+            --biscast-light-gold: #F5C842;
+            --biscast-bg: #F4F7FC;
+            --biscast-white: #FFFFFF;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+        body {
+            background: linear-gradient(135deg, var(--biscast-bg) 0%, #E8EDF5 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .portal {
+            max-width: 720px;
+            width: 100%;
+            background: var(--biscast-white);
+            border-radius: 48px;
+            padding: 48px 40px;
+            box-shadow: 0 24px 80px rgba(10, 43, 78, 0.20);
+            border-top: 8px solid var(--biscast-gold);
+            text-align: center;
+        }
+        .logo {
+            font-size: 3.5rem;
+            font-weight: 800;
+            color: var(--biscast-navy);
+            letter-spacing: -1px;
+        }
+        .logo span { color: var(--biscast-gold); }
+        .subtitle {
+            color: #555;
+            margin: 8px 0 32px 0;
+            font-size: 1.1rem;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 16px;
+        }
+        .pin-input-area {
+            background: var(--biscast-bg);
+            border-radius: 60px;
+            padding: 8px;
+            display: flex;
+            gap: 8px;
+            margin-bottom: 32px;
+            border: 2px solid #E2E8F0;
+        }
+        .pin-input-area input {
+            flex: 1;
+            border: none;
+            background: transparent;
+            padding: 14px 20px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            text-align: center;
+            letter-spacing: 4px;
+            outline: none;
+            color: var(--biscast-navy);
+        }
+        .pin-input-area input::placeholder { letter-spacing: 0; font-weight: 400; color: #aaa; }
+        .pin-input-area button {
+            background: var(--biscast-blue);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 40px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: 0.2s;
+            white-space: nowrap;
+        }
+        .pin-input-area button:hover { background: var(--biscast-navy); }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 8px;
+        }
+        .role-card {
+            background: var(--biscast-bg);
+            border-radius: 24px;
+            padding: 24px 16px;
+            text-decoration: none;
+            color: var(--biscast-navy);
+            transition: 0.25s ease;
+            border: 2px solid transparent;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+        .role-card:hover {
+            border-color: var(--biscast-gold);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(10, 43, 78, 0.10);
+        }
+        .role-card .icon { font-size: 2.4rem; }
+        .role-card .label { font-weight: 700; font-size: 1.1rem; }
+        .role-card .desc { font-size: 0.8rem; color: #777; }
+        .role-card.full { grid-column: 1 / -1; background: var(--biscast-navy); color: white; }
+        .role-card.full .desc { color: rgba(255,255,255,0.7); }
+        .role-card.full:hover { border-color: var(--biscast-light-gold); }
+
+        .footer-note {
+            margin-top: 32px;
+            font-size: 0.8rem;
+            color: #999;
+        }
+        @media (max-width: 500px) {
+            .portal { padding: 24px 16px; }
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="portal">
+        <div class="logo">e<span>Hapot</span></div>
+        <div class="subtitle">BISCAST · Student Development Services · Interactive Q&A Engine</div>
+
+        <!-- Persistent PIN Setter -->
+        <div class="pin-input-area">
+            <input type="text" id="eventPinInput" placeholder="Enter Event PIN (e.g., 1234)" maxlength="6" value="1234">
+            <button onclick="updateAllLinks()">Set PIN</button>
+        </div>
+
+        <div class="grid-2">
+            <!-- Projector (Big Screen) -->
+            <a href="#" id="projectorLink" class="role-card" target="_blank">
+                <span class="icon">🖥️</span>
+                <span class="label">Projector View</span>
+                <span class="desc">Public big-screen display</span>
+            </a>
+
+            <!-- Moderator (Dashboard) -->
+            <a href="moderator.html" class="role-card" target="_blank">
+                <span class="icon">🎙️</span>
+                <span class="label">Moderator Panel</span>
+                <span class="desc">Control & approve questions</span>
+            </a>
+
+            <!-- Audience (Submit) -->
+            <a href="#" id="submitLink" class="role-card" target="_blank">
+                <span class="icon">📱</span>
+                <span class="label">Audience Entry</span>
+                <span class="desc">Submit questions (QR code target)</span>
+            </a>
+
+            <!-- QR Code Generator -->
+            <a href="#" id="qrLink" class="role-card" target="_blank">
+                <span class="icon">📲</span>
+                <span class="label">Get QR Code</span>
+                <span class="desc">Static QR for slides/posters</span>
+            </a>
+
+            <!-- Admin / Diagnostics (Full width) -->
+            <a href="https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID" class="role-card full" target="_blank">
+                <span class="icon">📊</span>
+                <span class="label">View Audit Logs (Sheets)</span>
+                <span class="desc">Direct link to QnA_Master & Audit_Log</span>
+            </a>
+        </div>
+
+        <div class="footer-note">v2.0 · Secured by Zero-Trust Governance</div>
+    </div>
+
+    <script>
+        // Initialize PIN from localStorage or default
+        const pinInput = document.getElementById('eventPinInput');
+        const projectorLink = document.getElementById('projectorLink');
+        const submitLink = document.getElementById('submitLink');
+        const qrLink = document.getElementById('qrLink');
+
+        // Load saved PIN
+        const savedPin = localStorage.getItem('eHapot_pin') || '1234';
+        pinInput.value = savedPin;
+        updateAllLinks();
+
+        function updateAllLinks() {
+            const pin = pinInput.value.trim() || '0000';
+            localStorage.setItem('eHapot_pin', pin);
+
+            const baseUrl = window.location.origin + window.location.pathname.replace(/\/$/, '');
+            // Remove the trailing /index.html if present
+            const rootPath = baseUrl.replace(/\/index\.html$/, '');
+
+            projectorLink.href = `${rootPath}/projector.html?pin=${pin}`;
+            submitLink.href = `${rootPath}/submit.html?pin=${pin}`;
+            qrLink.href = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${rootPath}/submit.html?pin=${pin}`)}`;
+        }
+
+        // Allow Enter key to trigger update
+        pinInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') updateAllLinks();
+        });
+
+        // Auto-update when input changes (debounced)
+        let timeoutId;
+        pinInput.addEventListener('input', () => {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(updateAllLinks, 300);
+        });
+    </script>
+</body>
+</html>
