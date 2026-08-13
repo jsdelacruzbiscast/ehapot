@@ -454,10 +454,15 @@
 
                     const response = await fetch(CONFIG.ENDPOINT, {
                         method: 'POST',
-                        mode: 'cors',                // Standard CORS; Apps Script handles preflight
+                        mode: 'cors',
+                        // NOTE: text/plain keeps this a CORS "simple request" so the
+                        // browser skips the preflight OPTIONS call — Apps Script Web
+                        // Apps do not reliably answer preflight with the headers
+                        // browsers require, even with a doOptions() handler defined.
+                        // The body is still a JSON string; Code.gs parses it via
+                        // JSON.parse(e.postData.contents).
                         headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
+                            'Content-Type': 'text/plain;charset=utf-8'
                         },
                         body: JSON.stringify(payload)
                     });
