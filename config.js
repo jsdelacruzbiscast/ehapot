@@ -7,7 +7,7 @@
 
 const CONFIG = Object.freeze({
   APP_NAME: 'eHapot',
-  VERSION: '2.1.0',
+  VERSION: '2.1.1',
 
   // Google Apps Script Web App
   ENDPOINT: 'https://script.google.com/macros/s/AKfycbwBxCzLRBd1inBCwXuekBoVQDcnW6_XOZaPoas3pu-LZgsJV2Ql6IUwcjag5Oq4fvyVTA/exec',
@@ -18,7 +18,8 @@ const CONFIG = Object.freeze({
   PROJECTOR_POLL_INTERVAL: 3000,
   PROJECTOR_HIDDEN_POLL_INTERVAL: 30000,
   MODERATOR_POLL_INTERVAL: 4000,
-  REQUEST_TIMEOUT: 12000,
+  REQUEST_TIMEOUT: 30000,
+  MODERATOR_REQUEST_TIMEOUT: 45000,
 
   MIN_QUESTION_LENGTH: 3,
   MAX_QUESTION_LENGTH: 500,

@@ -128,7 +128,8 @@
 
   async function post(payload) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
+    const timeoutMs = CONFIG.MODERATOR_REQUEST_TIMEOUT || 45000;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const res = await fetch(CONFIG.ENDPOINT, {
         method:'POST',
@@ -141,7 +142,14 @@
       const data = await res.json();
       if (!data || data.ok !== true) throw new Error(data?.error || 'Backend request failed');
       return data;
-    } finally { clearTimeout(timeout); }
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        throw new Error(`Moderator request timed out after ${Math.round(timeoutMs / 1000)} seconds. Please retry; if it repeats, verify the Apps Script deployment.`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   function authPayload(action) {
@@ -311,7 +319,7 @@
       await refreshFeed();
     } catch (err) {
       moderatorSecret = '';
-      loginError.textContent = err.message;
+      loginError.textContent = err.message || 'Unable to reach the eHapot backend.';
       setConnection('Locked');
     } finally {
       document.getElementById('loginBtn').disabled = false;
