@@ -53,12 +53,11 @@ if (typeof console !== 'undefined') {
   console.log('[eHapot] Endpoint:', CONFIG.ENDPOINT);
   
   // Warn the user if the placeholder is still present
-  if (CONFIG.ENDPOINT.includes('YOUR_DEPLOYMENT_ID')) {
+  if (CONFIG.ENDPOINT.includes('AKfycbwBxCzLRBd1inBCwXuekBoVQDcnW6_XOZaPoas3pu-LZgsJV2Ql6IUwcjag5Oq4fvyVTA')) {
     console.warn('[eHapot] ⚠️  WARNING: You are still using the placeholder ENDPOINT!');
     console.warn('[eHapot] Please replace it with your actual Apps Script Web App URL.');
   }
 }
-
 // ================================================================
 //  END OF FILE
 // ================================================================
