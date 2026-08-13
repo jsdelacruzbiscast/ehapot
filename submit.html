@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>eHapot · Ask a Question</title>
+    
+    <!-- Load shared configuration (contains ENDPOINT and APP_NAME) -->
+    <script src="config.js"></script>
+
+    <style>
+        /* ================================================================
+               BISCAST INSTITUTIONAL PALETTE (Hardcoded CSS Variables)
+               ================================================================ */
+        :root {
+            --biscast-navy: #0A2B4E;
+            --biscast-blue: #1D5C9B;
+            --biscast-gold: #D4A017;
+            --biscast-light-gold: #F5C842;
+            --biscast-bg: #F4F7FC;
+            --biscast-white: #FFFFFF;
+            --biscast-danger: #C62828;
+            --biscast-success: #2E7D32;
+            --shadow-card: 0 12px 40px rgba(10, 43, 78, 0.15);
+            --radius-card: 32px;
+        }
+
+        /* ---------- Reset & Base ---------- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background: var(--biscast-bg);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        /* ---------- Main Card ---------- */
+        .card {
+            max-width: 480px;
+            width: 100%;
+            background: var(--biscast-white);
+            border-radius: var(--radius-card);
+            padding: 32px 24px;
+            box-shadow: var(--shadow-card);
+            border-top: 6px solid var(--biscast-gold);
+            transition: transform 0.2s ease;
+        }
+
+        /* ---------- Header ---------- */
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .header .app-icon {
+            font-size: 2rem;
+            line-height: 1;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--biscast-navy);
+            letter-spacing: -0.5px;
+        }
+
+        .header h1 span {
+            color: var(--biscast-gold);
+        }
+
+        .header .pin-badge {
+            background: var(--biscast-navy);
+            color: var(--biscast-light-gold);
+            padding: 4px 14px;
+            border-radius: 40px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-left: auto;
+            white-space: nowrap;
+            border: 1px solid var(--biscast-gold);
+            letter-spacing: 1px;
+        }
+
+        /* ---------- Subtitle ---------- */
+        .subtitle {
+            color: #555;
+            font-size: 0.95rem;
+            margin-bottom: 24px;
+            border-left: 4px solid var(--biscast-gold);
+            padding-left: 14px;
+            line-height: 1.4;
+        }
+
+        /* ---------- Textarea ---------- */
+        .input-group {
+            margin-bottom: 6px;
+        }
+
+        textarea {
+            width: 100%;
+            border: 2px solid #E2E8F0;
+            border-radius: 16px;
+            padding: 16px;
+            font-size: 1rem;
+            min-height: 140px;
+            resize: vertical;
+            transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+            background: var(--biscast-bg);
+            color: var(--biscast-navy);
+            font-family: inherit;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--biscast-blue);
+            box-shadow: 0 0 0 4px rgba(29, 92, 155, 0.15);
+            background: var(--biscast-white);
+        }
+
+        textarea::placeholder {
+            color: #999;
+            font-weight: 400;
+        }
+
+        /* ---------- Character Counter ---------- */
+        .char-counter {
+            text-align: right;
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 6px;
+            padding-right: 4px;
+        }
+
+        .char-counter .warning {
+            color: var(--biscast-danger);
+            font-weight: 600;
+        }
+
+        /* ---------- Submit Button ---------- */
+        .btn-submit {
+            width: 100%;
+            background: var(--biscast-blue);
+            color: var(--biscast-white);
+            border: none;
+            padding: 16px 20px;
+            border-radius: 60px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-top: 20px;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.15s ease, opacity 0.2s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 12px rgba(29, 92, 155, 0.3);
+            letter-spacing: 0.3px;
+        }
+
+        .btn-submit:hover {
+            background: var(--biscast-navy);
+            transform: translateY(-1px);
+        }
+
+        .btn-submit:active {
+            transform: scale(0.97);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* ---------- Feedback Messages ---------- */
+        #feedback {
+            margin-top: 18px;
+            padding: 14px 16px;
+            border-radius: 14px;
+            text-align: center;
+            font-weight: 500;
+            display: none;
+            border: 1px solid transparent;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+
+        #feedback.success {
+            display: block;
+            background: #E8F5E9;
+            color: var(--biscast-success);
+            border-color: #A5D6A7;
+        }
+
+        #feedback.error {
+            display: block;
+            background: #FFEBEE;
+            color: var(--biscast-danger);
+            border-color: #EF9A9A;
+        }
+
+        /* ---------- Footer ---------- */
+        .footer {
+            margin-top: 24px;
+            font-size: 0.75rem;
+            color: #aaa;
+            text-align: center;
+            letter-spacing: 0.5px;
+            border-top: 1px solid #f0f0f0;
+            padding-top: 18px;
+        }
+
+        .footer .version {
+            font-weight: 600;
+            color: var(--biscast-blue);
+        }
+
+        /* ---------- Responsive tweaks ---------- */
+        @media (max-width: 500px) {
+            .card {
+                padding: 24px 16px;
+                border-radius: 24px;
+            }
+            .header h1 {
+                font-size: 1.25rem;
+            }
+            .header .app-icon {
+                font-size: 1.6rem;
+            }
+            textarea {
+                min-height: 120px;
+                font-size: 0.95rem;
+                padding: 14px;
+            }
+            .btn-submit {
+                font-size: 1rem;
+                padding: 14px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ================================================================
+    MAIN SUBMISSION CARD
+    ================================================================ -->
+    <div class="card" role="main" aria-labelledby="app-title">
+        <!-- Header -->
+        <div class="header">
+            <span class="app-icon" aria-hidden="true">🎤</span>
+            <h1 id="app-title"><span>e</span>Hapot · Ask</h1>
+            <span class="pin-badge" id="pinDisplay">PIN: ----</span>
+        </div>
+
+        <!-- Instructions -->
+        <div class="subtitle">
+            Your question will be reviewed by the SDS moderator before appearing on the big screen.
+        </div>
+
+        <!-- Question Input -->
+        <div class="input-group">
+            <label for="questionInput" class="sr-only">Type your question</label>
+            <textarea id="questionInput"
+                      placeholder="Type your question here... (e.g., What are the next steps for the new policy?)"
+                      maxlength="500"
+                      aria-describedby="charCounter feedback"
+                      autofocus></textarea>
+            <div class="char-counter" id="charCounter">
+                <span id="charCount">0</span> / 500
+            </div>
+        </div>
+
+        <!-- Submit Button -->
+        <button class="btn-submit" id="submitBtn">
+            <span aria-hidden="true">✉️</span> Send Question
+        </button>
+
+        <!-- Feedback Area (hidden by default) -->
+        <div id="feedback" role="alert" aria-live="polite"></div>
+
+        <!-- Footer -->
+        <div class="footer">
+            BISCAST · Student Development Services · <span class="version">eHapot v2.0</span>
+        </div>
+    </div>
+
+    <!-- ================================================================
+    JAVASCRIPT ENGINE
+    ================================================================ -->
+    <script>
+        (function() {
+            'use strict';
+
+            /**
+             * ----------------------------------------------------------------
+             * 1. SECURE PIN HANDLING
+             *    - Extract PIN from URL (?pin=XXXX)
+             *    - Immediately strip it from the browser history (prevents 
+             *      shoulder-surfing on shared devices)
+             *    - Display it in the badge
+             * ----------------------------------------------------------------
+             */
+            const urlParams = new URLSearchParams(window.location.search);
+            const eventPin = urlParams.get('pin') || '0000';
+
+            // Remove PIN from URL bar without reloading the page (security best-practice)
+            if (window.history && window.history.replaceState) {
+                try {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                } catch (e) {
+                    // If replacement fails (e.g., file:// protocol), silently continue.
+                }
+            }
+
+            // Display the PIN in the badge
+            const pinDisplay = document.getElementById('pinDisplay');
+            if (pinDisplay) {
+                pinDisplay.textContent = 'PIN: ' + eventPin;
+            }
+
+            /**
+             * ----------------------------------------------------------------
+             * 2. CLIENT ID FOR RATE LIMITING
+             *    - Generate a persistent UUID per device/browser using sessionStorage
+             *    - This allows the backend to enforce a per-device cooldown
+             *      without requiring login or cookies.
+             * ----------------------------------------------------------------
+             */
+            let clientId = sessionStorage.getItem('eHapot_clientId');
+            if (!clientId) {
+                // Use crypto.randomUUID() if available (modern browsers), else fallback to a simple RFC-compliant v4 generator.
+                if (window.crypto && crypto.randomUUID) {
+                    clientId = crypto.randomUUID();
+                } else {
+                    // Simple UUID v4 fallback (for older browsers / Safari)
+                    clientId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                        const r = Math.random() * 16 | 0;
+                        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                        return v.toString(16);
+                    });
+                }
+                sessionStorage.setItem('eHapot_clientId', clientId);
+            }
+
+            /**
+             * ----------------------------------------------------------------
+             * 3. DOM REFERENCES
+             * ----------------------------------------------------------------
+             */
+            const questionInput = document.getElementById('questionInput');
+            const submitBtn = document.getElementById('submitBtn');
+            const feedback = document.getElementById('feedback');
+            const charCount = document.getElementById('charCount');
+            const MAX_CHARS = 500;
+
+            /**
+             * ----------------------------------------------------------------
+             * 4. CHARACTER COUNTER (Live feedback)
+             * ----------------------------------------------------------------
+             */
+            function updateCharCount() {
+                const len = questionInput.value.length;
+                charCount.textContent = len;
+                // Highlight if approaching limit
+                if (len > MAX_CHARS * 0.9) {
+                    charCount.classList.add('warning');
+                } else {
+                    charCount.classList.remove('warning');
+                }
+            }
+
+            questionInput.addEventListener('input', updateCharCount);
+            // Initial count on load
+            updateCharCount();
+
+            /**
+             * ----------------------------------------------------------------
+             * 5. SUBMISSION HANDLER
+             *    - Validates input length
+             *    - Disables button to prevent double-clicks
+             *    - Sends payload to the Apps Script backend
+             *    - Displays success/error feedback
+             * ----------------------------------------------------------------
+             */
+            submitBtn.addEventListener('click', async function handleSubmit() {
+                const question = questionInput.value.trim();
+
+                // --- VALIDATION ---
+                if (!question) {
+                    feedback.className = 'error';
+                    feedback.textContent = '⚠️ Please write a question before submitting.';
+                    feedback.style.display = 'block';
+                    questionInput.focus();
+                    return;
+                }
+
+                if (question.length < 3) {
+                    feedback.className = 'error';
+                    feedback.textContent = '⚠️ Question must be at least 3 characters long.';
+                    feedback.style.display = 'block';
+                    questionInput.focus();
+                    return;
+                }
+
+                if (question.length > MAX_CHARS) {
+                    feedback.className = 'error';
+                    feedback.textContent = '⚠️ Question exceeds the ' + MAX_CHARS + ' character limit.';
+                    feedback.style.display = 'block';
+                    questionInput.focus();
+                    return;
+                }
+
+                // --- UI: LOCK BUTTON & SHOW LOADING ---
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span aria-hidden="true">⏳</span> Sending...';
+                feedback.style.display = 'none';
+
+                // --- BUILD PAYLOAD ---
+                const payload = {
+                    action: 'submitQuestion',
+                    pin: eventPin,
+                    question: question,
+                    submittedBy: 'Attendee', // Could be made optional in future
+                    clientId: clientId       // CRITICAL: Enables per-device rate limiting
+                };
+
+                try {
+                    // Ensure the endpoint is defined in config.js
+                    if (typeof CONFIG === 'undefined' || !CONFIG.ENDPOINT) {
+                        throw new Error('System configuration missing. Please contact the administrator.');
+                    }
+
+                    const response = await fetch(CONFIG.ENDPOINT, {
+                        method: 'POST',
+                        mode: 'cors',                // Standard CORS; Apps Script handles preflight
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    // Parse the JSON response
+                    let data;
+                    try {
+                        data = await response.json();
+                    } catch (parseError) {
+                        // If the response is not valid JSON (e.g., HTML error page)
+                        throw new Error('Server returned an invalid response. Please try again.');
+                    }
+
+                    // Handle success / error from backend
+                    if (data.success) {
+                        feedback.className = 'success';
+                        feedback.textContent = '✅ Question received! It is now in the moderation queue.';
+                        feedback.style.display = 'block';
+
+                        // Clear the input field for the next question
+                        questionInput.value = '';
+                        updateCharCount();
+                        questionInput.focus();
+                    } else {
+                        // Backend returned an error message (e.g., rate limit, length)
+                        throw new Error(data.error || 'Server declined the question.');
+                    }
+
+                } catch (err) {
+                    // Network errors or explicit throws from above
+                    feedback.className = 'error';
+                    feedback.textContent = '❌ ' + (err.message || 'Could not connect. Please check your internet connection.');
+                    feedback.style.display = 'block';
+                } finally {
+                    // --- UI: UNLOCK BUTTON ---
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<span aria-hidden="true">✉️</span> Send Question';
+                }
+            });
+
+            /**
+             * ----------------------------------------------------------------
+             * 6. ACCESSIBILITY: Submit on Ctrl+Enter
+             *    - Allows users with mobility impairments to submit without
+             *      moving their hands from the keyboard.
+             * ----------------------------------------------------------------
+             */
+            questionInput.addEventListener('keydown', function(e) {
+                // If Ctrl+Enter or Cmd+Enter is pressed, trigger submit
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault(); // Prevent adding a newline
+                    submitBtn.click();
+                }
+            });
+
+            /**
+             * ----------------------------------------------------------------
+             * 7. DIAGNOSTIC: Log configuration on load (for debugging)
+             * ----------------------------------------------------------------
+             */
+            if (typeof CONFIG !== 'undefined') {
+                console.log('[eHapot] Audience Mic initialised.');
+                console.log('[eHapot] Endpoint:', CONFIG.ENDPOINT);
+                console.log('[eHapot] Client ID:', clientId);
+                console.log('[eHapot] PIN:', eventPin);
+            } else {
+                console.warn('[eHapot] CONFIG object not found. Ensure config.js is loaded.');
+                // Display a non-blocking warning in the UI
+                const warning = document.createElement('div');
+                warning.style.cssText =
+                    'background:#FFEBEE;color:#C62828;padding:10px;border-radius:12px;margin-top:12px;font-size:0.85rem;text-align:center;';
+                warning.textContent = '⚠️ System configuration error. Please contact the SDS administrator.';
+                document.querySelector('.card').appendChild(warning);
+            }
+
+        })(); // end IIFE
+    </script>
+
+</body>
+</html>
