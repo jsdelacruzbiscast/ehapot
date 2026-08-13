@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eHapot · Moderator Panel</title>
+
+    <!-- Shared configuration (endpoint + app name) -->
+    <script src="config.js"></script>
+
+    <!-- QR Code generation library (loaded from CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js">
+    </script>
+
+    <style>
+        /* ================================================================
+               BISCAST INSTITUTIONAL PALETTE
+               ================================================================ */
+        :root {
+            --biscast-navy: #0A2B4E;
+            --biscast-blue: #1D5C9B;
+            --biscast-gold: #D4A017;
+            --biscast-light-gold: #F5C842;
+            --biscast-bg: #F4F7FC;
+            --biscast-white: #FFFFFF;
+            --biscast-danger: #C62828;
+            --biscast-success: #2E7D32;
+            --shadow-card: 0 4px 20px rgba(10, 43, 78, 0.08);
+            --radius-card: 20px;
+            --transition-speed: 0.25s;
+        }
+
+        /* ---------- Reset & Base ---------- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+        }
+
+        body {
+            background: var(--biscast-bg);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        /* ---------- Utility ---------- */
+        .hidden {
+            display: none !important;
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
+
+        /* ---------- LOGIN SCREEN ---------- */
+        .login-screen {
+            max-width: 420px;
+            margin: 80px auto;
+            background: var(--biscast-white);
+            padding: 40px 36px;
+            border-radius: 32px;
+            box-shadow: 0 12px 48px rgba(10, 43, 78, 0.12);
+            border-top: 6px solid var(--biscast-gold);
+        }
+
+        .login-screen h2 {
+            color: var(--biscast-navy);
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .login-screen h2 span {
+            color: var(--biscast-gold);
+        }
+
+        .login-screen .sub {
+            color: #666;
+            margin-bottom: 28px;
+            font-size: 0.95rem;
+        }
+
+        .login-screen label {
+            display: block;
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #444;
+            margin-bottom: 4px;
+            margin-top: 16px;
+        }
+
+        .login-screen input {
+            width: 100%;
+            padding: 14px 18px;
+            border-radius: 60px;
+            border: 2px solid #E2E8F0;
+            font-size: 1rem;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            background: var(--biscast-bg);
+        }
+
+        .login-screen input:focus {
+            outline: none;
+            border-color: var(--biscast-blue);
+            box-shadow: 0 0 0 4px rgba(29, 92, 155, 0.12);
+            background: var(--biscast-white);
+        }
+
+        .login-screen .btn-login {
+            width: 100%;
+            margin-top: 24px;
+            background: var(--biscast-blue);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 60px;
+            font-weight: 700;
+            font-size: 1.05rem;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.15s ease;
+            box-shadow: 0 4px 12px rgba(29, 92, 155, 0.25);
+        }
+
+        .login-screen .btn-login:hover {
+            background: var(--biscast-navy);
+            transform: translateY(-1px);
+        }
+
+        .login-screen .btn-login:active {
+            transform: scale(0.97);
+        }
+
+        #loginError {
+            color: var(--biscast-danger);
+            margin-top: 14px;
+            text-align: center;
+            font-weight: 500;
+            font-size: 0.9rem;
+            min-height: 1.4em;
+        }
+
+        /* ---------- DASHBOARD ---------- */
+        .dashboard {
+            max-width: 1440px;
+            margin: 0 auto;
+        }
+
+        /* --- Top Bar --- */
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .topbar .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .topbar .brand h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--biscast-navy);
+            letter-spacing: -0.5px;
+        }
+
+        .topbar .brand h1 span {
+            color: var(--biscast-gold);
+        }
+
+        .topbar .brand .badge {
+            background: var(--biscast-gold);
+            color: var(--biscast-white);
+            padding: 4px 16px;
+            border-radius: 40px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .topbar .user-area {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .topbar .user-area .mod-name {
+            font-weight: 600;
+            color: var(--biscast-navy);
+            background: var(--biscast-bg);
+            padding: 6px 16px;
+            border-radius: 40px;
+            font-size: 0.9rem;
+        }
+
+        .topbar .user-area .btn-lock {
+            background: var(--biscast-danger);
+            color: white;
+            border: none;
+            padding: 6px 18px;
+            border-radius: 40px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .topbar .user-area .btn-lock:hover {
+            background: #B71C1C;
+        }
+
+        /* --- QR Code Panel --- */
+        .qr-panel {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            background: var(--biscast-white);
+            padding: 12px 20px;
+            border-radius: 16px;
+            box-shadow: var(--shadow-card);
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .qr-panel #qrcode {
+            width: 100px;
+            height: 100px;
+            background: white;
+            padding: 6px;
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+
+        .qr-panel .qr-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .qr-panel .qr-info .label {
+            font-weight: 700;
+            color: var(--biscast-navy);
+            font-size: 1rem;
+        }
+
+        .qr-panel .qr-info .desc {
+            font-size: 0.9rem;
+            color: #555;
+        }
+
+        .qr-panel .qr-info .pin-tag {
+            background: var(--biscast-bg);
+            padding: 2px 14px;
+            border-radius: 40px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--biscast-navy);
+            display: inline-block;
+            margin-top: 4px;
+            border: 1px solid #ddd;
+        }
+
+        .qr-panel .qr-info .pin-tag span {
+            color: var(--biscast-gold);
+            font-weight: 800;
+        }
+
+        /* --- 3-Column Grid --- */
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .grid-3 {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .grid-3 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* --- Column Cards --- */
+        .col-card {
+            background: var(--biscast-white);
+            border-radius: var(--radius-card);
+            padding: 16px;
+            box-shadow: var(--shadow-card);
+            display: flex;
+            flex-direction: column;
+            max-height: 75vh;
+            border-top: 4px solid #ddd;
+        }
+
+        .col-card.pending-col {
+            border-top-color: #FFA726;
+        }
+        .col-card.deck-col {
+            border-top-color: var(--biscast-blue);
+        }
+        .col-card.onair-col {
+            border-top-color: var(--biscast-success);
+        }
+
+        .col-card .col-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+            margin-bottom: 12px;
+            flex-shrink: 0;
+        }
+
+        .col-card .col-header h2 {
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #555;
+            font-weight: 700;
+        }
+
+        .col-card .col-header .count {
+            background: var(--biscast-navy);
+            color: white;
+            border-radius: 40px;
+            padding: 2px 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .col-card .col-header .shortcut-hint {
+            font-size: 0.65rem;
+            color: #999;
+            background: #f0f0f0;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-weight: 400;
+        }
+
+        /* --- Queue List (scrollable) --- */
+        .queue-list {
+            overflow-y: auto;
+            flex: 1;
+            padding-right: 4px;
+        }
+
+        .queue-list::-webkit-scrollbar {
+            width: 4px;
+        }
+        .queue-list::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 10px;
+        }
+
+        /* --- Question Item --- */
+        .q-item {
+            background: var(--biscast-bg);
+            padding: 12px 14px;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            border-left: 4px solid #ccc;
+            transition: background 0.2s ease;
+        }
+
+        .q-item:hover {
+            background: #EAEEF5;
+        }
+
+        .q-item .q-text {
+            font-weight: 500;
+            font-size: 0.95rem;
+            color: var(--biscast-navy);
+            word-break: break-word;
+        }
+
+        .q-item .q-meta {
+            font-size: 0.75rem;
+            color: #777;
+            margin-top: 4px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .q-item .q-meta .badge-pending {
+            color: #E65100;
+            font-weight: 600;
+        }
+        .q-item .q-meta .badge-approved {
+            color: var(--biscast-blue);
+            font-weight: 600;
+        }
+        .q-item .q-meta .badge-onair {
+            color: var(--biscast-success);
+            font-weight: 600;
+        }
+
+        /* --- On-Air special styling --- */
+        .q-item.on-air {
+            border-left-color: var(--biscast-success);
+            background: #E8F5E9;
+        }
+
+        .q-item .live-badge {
+            display: inline-block;
+            background: var(--biscast-success);
+            color: white;
+            padding: 0px 12px;
+            border-radius: 40px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            margin-right: 6px;
+            text-transform: uppercase;
+            animation: pulse-badge 1.8s infinite;
+        }
+
+        @keyframes pulse-badge {
+            0% {
+                opacity: 0.7;
+            }
+            50% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0.7;
+            }
+        }
+
+        /* --- Action Buttons --- */
+        .btn-group {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 4px 14px;
+            border-radius: 40px;
+            border: none;
+            font-weight: 600;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s, opacity 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .btn:active {
+            transform: scale(0.95);
+        }
+        .btn:disabled {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+
+        .btn-success {
+            background: var(--biscast-success);
+            color: white;
+        }
+        .btn-success:hover {
+            background: #1B5E20;
+        }
+
+        .btn-danger {
+            background: var(--biscast-danger);
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #B71C1C;
+        }
+
+        .btn-gold {
+            background: var(--biscast-gold);
+            color: white;
+        }
+        .btn-gold:hover {
+            background: var(--biscast-light-gold);
+            color: #222;
+        }
+
+        .btn-primary {
+            background: var(--biscast-blue);
+            color: white;
+        }
+        .btn-primary:hover {
+            background: var(--biscast-navy);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1.5px solid #ccc;
+            color: #555;
+        }
+        .btn-outline:hover {
+            background: #f0f0f0;
+        }
+
+        /* --- History section inside On-Air column --- */
+        .history-section {
+            margin-top: 14px;
+            border-top: 1px solid #eee;
+            padding-top: 12px;
+        }
+
+        .history-section .history-label {
+            font-size: 0.75rem;
+            color: #999;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .history-item {
+            background: #f5f5f5;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            color: #555;
+            margin-bottom: 4px;
+            border-left: 3px solid #ccc;
+        }
+
+        .history-item .h-text {
+            font-weight: 500;
+        }
+        .history-item .h-meta {
+            font-size: 0.7rem;
+            color: #999;
+        }
+
+        /* ---------- Responsive tweaks ---------- */
+        @media (max-width: 700px) {
+            .topbar .brand h1 {
+                font-size: 1.4rem;
+            }
+            .qr-panel {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .qr-panel #qrcode {
+                width: 80px;
+                height: 80px;
+            }
+            .col-card {
+                max-height: 60vh;
+            }
+            .login-screen {
+                margin: 40px 16px;
+                padding: 28px 20px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ================================================================
+    LOGIN SCREEN
+    ================================================================ -->
+    <div id="loginScreen" class="login-screen" role="main" aria-labelledby="login-title">
+        <h2 id="login-title"><span>e</span>Hapot · Moderator</h2>
+        <p class="sub">Enter your name and the event PIN to control the Q&A flow.</p>
+
+        <label for="modNameInput">Your Full Name</label>
+        <input type="text" id="modNameInput" placeholder="e.g., Maria Santos" autocomplete="name" required>
+
+        <label for="pinInput">Event PIN</label>
+        <input type="password" id="pinInput" placeholder="Enter 4-digit PIN" autocomplete="off" required maxlength="6">
+
+        <button class="btn-login" id="loginBtn">🔓 Unlock Dashboard</button>
+        <div id="loginError" aria-live="polite"></div>
+    </div>
+
+    <!-- ================================================================
+    DASHBOARD
+    ================================================================ -->
+    <div id="dashboard" class="dashboard hidden" role="main" aria-labelledby="dash-title">
+
+        <!-- Top Bar -->
+        <div class="topbar">
+            <div class="brand">
+                <h1 id="dash-title"><span>e</span>Hapot · Command Center</h1>
+                <span class="badge">BISCAST SDS</span>
+            </div>
+            <div class="user-area">
+                <span class="mod-name" id="moderatorDisplay">👤 Moderator</span>
+                <button class="btn-lock" id="lockBtn">🔒 Lock</button>
+            </div>
+        </div>
+
+        <!-- QR Code Panel -->
+        <div class="qr-panel">
+            <div id="qrcode" aria-label="QR code for audience submission"></div>
+            <div class="qr-info">
+                <div class="label">📱 eHapot Audience Entry</div>
+                <div class="desc">Scan to ask a question on your phone</div>
+                <div class="pin-tag">PIN: <span id="qrPinDisplay">----</span></div>
+            </div>
+        </div>
+
+        <!-- 3-Column Grid -->
+        <div class="grid-3">
+
+            <!-- COLUMN 1: PENDING -->
+            <div class="col-card pending-col">
+                <div class="col-header">
+                    <h2>📥 Pending</h2>
+                    <span class="count" id="pendingCount">0</span>
+                    <span class="shortcut-hint">Ctrl+↑</span>
+                </div>
+                <div id="pendingList" class="queue-list" role="list" aria-label="Pending questions"></div>
+            </div>
+
+            <!-- COLUMN 2: ON DECK (Approved) -->
+            <div class="col-card deck-col">
+                <div class="col-header">
+                    <h2>✅ On Deck</h2>
+                    <span class="count" id="approvedCount">0</span>
+                    <span class="shortcut-hint">Ctrl+→</span>
+                </div>
+                <div id="approvedList" class="queue-list" role="list" aria-label="Approved questions awaiting projection"></div>
+            </div>
+
+            <!-- COLUMN 3: ON AIR + HISTORY -->
+            <div class="col-card onair-col">
+                <div class="col-header">
+                    <h2>📺 On Air</h2>
+                    <span class="shortcut-hint">Ctrl+↓</span>
+                </div>
+                <div id="onAirList" class="queue-list" role="list" aria-label="Currently live and recently answered questions">
+                    <!-- Content rendered by JavaScript -->
+                </div>
+            </div>
+
+        </div><!-- end grid-3 -->
+    </div>
+
+    <!-- ================================================================
+    JAVASCRIPT ENGINE
+    ================================================================ -->
+    <script>
+        (function() {
+            'use strict';
+
+            // --- CONFIG ---
+            const ENDPOINT = (typeof CONFIG !== 'undefined' && CONFIG.ENDPOINT) ?
+                CONFIG.ENDPOINT :
+                'https://script.google.com/macros/s/REPLACE_ME/exec';
+
+            // --- DOM refs ---
+            const loginScreen = document.getElementById('loginScreen');
+            const dashboard = document.getElementById('dashboard');
+            const modNameInput = document.getElementById('modNameInput');
+            const pinInput = document.getElementById('pinInput');
+            const loginBtn = document.getElementById('loginBtn');
+            const loginError = document.getElementById('loginError');
+            const moderatorDisplay = document.getElementById('moderatorDisplay');
+            const lockBtn = document.getElementById('lockBtn');
+            const pendingList = document.getElementById('pendingList');
+            const approvedList = document.getElementById('approvedList');
+            const onAirList = document.getElementById('onAirList');
+            const pendingCount = document.getElementById('pendingCount');
+            const approvedCount = document.getElementById('approvedCount');
+            const qrPinDisplay = document.getElementById('qrPinDisplay');
+            const qrContainer = document.getElementById('qrcode');
+
+            // --- State ---
+            let currentPin = '';
+            let currentName = '';
+            let pollInterval = null;
+            let previousPendingCount = 0;
+            let audioCtx = null;
+
+            // ============================================================
+            // 1. AUDIO CHIME (Web Audio, pre-warmed)
+            // ============================================================
+            function prewarmAudio() {
+                try {
+                    audioCtx = new(window.AudioContext || window.webkitAudioContext)();
+                    // Create and discard a silent buffer to unlock iOS audio
+                    const buffer = audioCtx.createBuffer(1, 1, 44100);
+                    const source = audioCtx.createBufferSource();
+                    source.buffer = buffer;
+                    source.connect(audioCtx.destination);
+                    source.start(0);
+                    source.stop(0.001);
+                } catch (e) {
+                    // Silently fail; audio is non-critical
+                }
+            }
+
+            function playChime() {
+                if (!audioCtx) return;
+                try {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.frequency.value = 880; // A5 note
+                    osc.type = 'sine';
+                    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+                    osc.start(audioCtx.currentTime);
+                    osc.stop(audioCtx.currentTime + 0.2);
+                } catch (e) {
+                    // Ignore audio errors
+                }
+            }
+
+            // ============================================================
+            // 2. LOGIN
+            // ============================================================
+            async function login() {
+                const name = modNameInput.value.trim();
+                const pin = pinInput.value.trim();
+
+                if (!name) {
+                    loginError.textContent = 'Please enter your full name.';
+                    modNameInput.focus();
+                    return;
+                }
+                if (!pin || pin.length < 4) {
+                    loginError.textContent = 'Please enter the 4-digit event PIN.';
+                    pinInput.focus();
+                    return;
+                }
+
+                loginBtn.disabled = true;
+                loginBtn.textContent = '⏳ Authenticating...';
+                loginError.textContent = '';
+
+                try {
+                    // Test the PIN by fetching the moderator feed
+                    const res = await fetch(`${ENDPOINT}?action=getModeratorFeed&pin=${pin}`);
+                    const data = await res.json();
+
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+
+                    // Success
+                    currentPin = pin;
+                    currentName = name;
+
+                    // Store in session for resilience
+                    sessionStorage.setItem('eHapot_modName', name);
+                    sessionStorage.setItem('eHapot_pin', pin);
+
+                    // UI transition
+                    loginScreen.classList.add('hidden');
+                    dashboard.classList.remove('hidden');
+                    moderatorDisplay.textContent = `👤 ${name}`;
+                    qrPinDisplay.textContent = pin;
+
+                    // Generate QR Code
+                    generateQR(pin);
+
+                    // Pre-warm audio
+                    prewarmAudio();
+
+                    // Initial data fetch
+                    await fetchData();
+
+                    // Start polling
+                    if (pollInterval) clearInterval(pollInterval);
+                    pollInterval = setInterval(fetchData, 4000);
+
+                    // Focus the first actionable element
+                    document.querySelector('#pendingList .btn:first-child')?.focus();
+
+                } catch (err) {
+                    loginError.textContent = '❌ ' + (err.message || 'Invalid PIN or network error.');
+                } finally {
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = '🔓 Unlock Dashboard';
+                }
+            }
+
+            // ============================================================
+            // 3. QR CODE GENERATION
+            // ============================================================
+            function generateQR(pin) {
+                qrContainer.innerHTML = '';
+                try {
+                    // Build the full audience URL
+                    const baseUrl = window.location.origin + window.location.pathname.replace(/moderator\.html$/, '');
+                    const audienceUrl = `${baseUrl}submit.html?pin=${pin}`;
+
+                    new QRCode(qrContainer, {
+                        text: audienceUrl,
+                        width: 100,
+                        height: 100,
+                        colorDark: '#0A2B4E',
+                        colorLight: '#FFFFFF',
+                        correctLevel: QRCode.CorrectLevel.H
+                    });
+                } catch (e) {
+                    // If QR library fails, show a fallback message
+                    qrContainer.innerHTML =
+                        `<div style="width:100px;height:100px;display:flex;align-items:center;justify-content:center;background:#f0f0f0;border-radius:8px;font-size:0.7rem;text-align:center;color:#555;">QR<br>unavailable</div>`;
+                    console.warn('QR generation failed:', e);
+                }
+            }
+
+            // ============================================================
+            // 4. DATA FETCHING & RENDERING
+            // ============================================================
+            async function fetchData() {
+                if (!currentPin) return;
+                try {
+                    const res = await fetch(`${ENDPOINT}?action=getModeratorFeed&pin=${currentPin}`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const data = await res.json();
+
+                    // Audio alert: if pending count increased
+                    if (data.pending && data.pending.length > previousPendingCount) {
+                        playChime();
+                    }
+                    previousPendingCount = data.pending ? data.pending.length : 0;
+
+                    renderLists(data);
+                } catch (e) {
+                    console.error('Polling error:', e);
+                    // Don't show error to user; just retry next interval
+                }
+            }
+
+            // ============================================================
+            // 5. RENDER LISTS
+            // ============================================================
+            function renderLists(data) {
+                // Safety: ensure data has the expected arrays
+                const pending = data.pending || [];
+                const approved = data.approved || [];
+                const onAir = data.onAir || [];
+                const completed = data.completed || [];
+
+                pendingCount.textContent = pending.length;
+                approvedCount.textContent = approved.length;
+
+                // --- PENDING ---
+                if (pending.length === 0) {
+                    pendingList.innerHTML =
+                        `<div style="color:#999;text-align:center;padding:30px 0;font-size:0.9rem;">✨ All clear — no pending questions</div>`;
+                } else {
+                    pendingList.innerHTML = pending.map(q => `
+                        <div class="q-item" role="listitem">
+                            <div class="q-text">${escapeHtml(q.text)}</div>
+                            <div class="q-meta">
+                                <span class="badge-pending">⏳ Pending</span>
+                                ${escapeHtml(q.submittedBy)} · ${q.ts || 'just now'}
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-success" data-id="${q.id}" data-action="approve">✅ Approve</button>
+                                <button class="btn btn-danger" data-id="${q.id}" data-action="reject">❌ Reject</button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+
+                // --- APPROVED (On Deck) ---
+                if (approved.length === 0) {
+                    approvedList.innerHTML =
+                        `<div style="color:#999;text-align:center;padding:30px 0;font-size:0.9rem;">📭 No questions ready for projection</div>`;
+                } else {
+                    approvedList.innerHTML = approved.map(q => `
+                        <div class="q-item" role="listitem">
+                            <div class="q-text">${escapeHtml(q.text)}</div>
+                            <div class="q-meta">
+                                <span class="badge-approved">✅ Approved</span>
+                                ${escapeHtml(q.submittedBy)}
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-gold" data-id="${q.id}" data-action="onair">📢 Send to Screen</button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+
+                // --- ON AIR + HISTORY ---
+                let onAirHtml = '';
+                if (onAir.length > 0) {
+                    onAirHtml = onAir.map(q => `
+                        <div class="q-item on-air" role="listitem">
+                            <div class="q-text">
+                                <span class="live-badge">● LIVE</span>
+                                ${escapeHtml(q.text)}
+                            </div>
+                            <div class="q-meta">${escapeHtml(q.submittedBy)} · ${q.ts || 'now'}</div>
+                            <div class="btn-group">
+                                <button class="btn btn-primary" data-id="${q.id}" data-action="complete">✅ Answered & Close</button>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    onAirHtml =
+                        `<div style="color:#999;text-align:center;padding:20px 0;font-size:0.9rem;">📺 No live question</div>`;
+                }
+
+                // History (last 5 completed)
+                let historyHtml = '';
+                if (completed && completed.length > 0) {
+                    const recent = completed.slice(-5);
+                    historyHtml = `
+                        <div class="history-section">
+                            <div class="history-label">📋 Recent History</div>
+                            ${recent.map(q => `
+                                <div class="history-item">
+                                    <div class="h-text">${escapeHtml(q.text)}</div>
+                                    <div class="h-meta">${escapeHtml(q.submittedBy)} · ${q.ts || ''}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+
+                onAirList.innerHTML = onAirHtml + historyHtml;
+
+                // --- Re-bind event listeners (delegation is better, but we use direct binding for simplicity) ---
+                bindButtons();
+            }
+
+            // ============================================================
+            // 6. BUTTON BINDING (with anti-double-click protection)
+            // ============================================================
+            function bindButtons() {
+                // Pending: Approve / Reject
+                document.querySelectorAll('#pendingList .btn-success').forEach(btn => {
+                    btn.removeEventListener('click', handleApprove);
+                    btn.addEventListener('click', handleApprove);
+                });
+                document.querySelectorAll('#pendingList .btn-danger').forEach(btn => {
+                    btn.removeEventListener('click', handleReject);
+                    btn.addEventListener('click', handleReject);
+                });
+
+                // Approved: Send to Screen
+                document.querySelectorAll('#approvedList .btn-gold').forEach(btn => {
+                    btn.removeEventListener('click', handleOnAir);
+                    btn.addEventListener('click', handleOnAir);
+                });
+
+                // On Air: Complete
+                document.querySelectorAll('#onAirList .btn-primary').forEach(btn => {
+                    btn.removeEventListener('click', handleComplete);
+                    btn.addEventListener('click', handleComplete);
+                });
+            }
+
+            // --- Action Handlers ---
+            async function handleApprove(e) {
+                const btn = e.currentTarget;
+                const id = btn.dataset.id;
+                await transition(id, 'APPROVED', btn);
+            }
+
+            async function handleReject(e) {
+                const btn = e.currentTarget;
+                const id = btn.dataset.id;
+                const reason = prompt('Rejection reason (optional):', 'Off-topic / Duplicate');
+                if (reason === null) return; // User cancelled
+                await transition(id, 'REJECTED', btn, reason);
+            }
+
+            async function handleOnAir(e) {
+                const btn = e.currentTarget;
+                const id = btn.dataset.id;
+                await transition(id, 'ON_AIR', btn);
+            }
+
+            async function handleComplete(e) {
+                const btn = e.currentTarget;
+                const id = btn.dataset.id;
+                await transition(id, 'COMPLETED', btn);
+            }
+
+            // --- Core Transition Function ---
+            async function transition(id, newState, btnElement, reason = '') {
+                if (!currentPin) return;
+
+                // Disable button to prevent double-click
+                if (btnElement) {
+                    btnElement.disabled = true;
+                    const originalText = btnElement.textContent;
+                    btnElement.textContent = '⏳ ...';
+                }
+
+                try {
+                    const res = await fetch(ENDPOINT, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'transitionQuestion',
+                            pin: currentPin,
+                            id: id,
+                            newState: newState,
+                            moderatorName: currentName,
+                            reason: reason
+                        })
+                    });
+
+                    const data = await res.json();
+
+                    if (data.success) {
+                        // Refresh the view
+                        await fetchData();
+                    } else {
+                        alert('❌ ' + (data.error || 'Transition failed.'));
+                        // Re-enable button if failed
+                        if (btnElement) {
+                            btnElement.disabled = false;
+                            btnElement.textContent = newState === 'APPROVED' ? '✅ Approve' :
+                                newState === 'REJECTED' ? '❌ Reject' :
+                                newState === 'ON_AIR' ? '📢 Send to Screen' :
+                                '✅ Complete';
+                        }
+                    }
+                } catch (err) {
+                    alert('❌ Network error: ' + err.message);
+                    if (btnElement) {
+                        btnElement.disabled = false;
+                    }
+                } finally {
+                    // If still disabled (success case), we don't re-enable because the item will be re-rendered.
+                    // But if the item is still in the list (error case), we already re-enabled above.
+                }
+            }
+
+            // ============================================================
+            // 7. KEYBOARD SHORTCUTS (Accessibility)
+            // ============================================================
+            document.addEventListener('keydown', function(e) {
+                // Ignore if typing in input/textarea
+                const tag = document.activeElement ? document.activeElement.tagName : '';
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+                // Ctrl+ArrowUp: Approve first pending
+                if (e.ctrlKey && e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    const firstApprove = document.querySelector('#pendingList .btn-success:not(:disabled)');
+                    if (firstApprove) firstApprove.click();
+                }
+                // Ctrl+ArrowRight: Send first approved to ON_AIR
+                else if (e.ctrlKey && e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    const firstOnAir = document.querySelector('#approvedList .btn-gold:not(:disabled)');
+                    if (firstOnAir) firstOnAir.click();
+                }
+                // Ctrl+ArrowDown: Complete current ON_AIR
+                else if (e.ctrlKey && e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    const completeBtn = document.querySelector('#onAirList .btn-primary:not(:disabled)');
+                    if (completeBtn) completeBtn.click();
+                }
+            });
+
+            // ============================================================
+            // 8. UTILITY: HTML escaping
+            // ============================================================
+            function escapeHtml(unsafe) {
+                if (!unsafe) return '';
+                const map = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                };
+                return unsafe.replace(/[&<>"']/g, function(m) { return map[m]; });
+            }
+
+            // ============================================================
+            // 9. LOGOUT / LOCK
+            // ============================================================
+            function logout() {
+                if (pollInterval) {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                }
+                // Reset state
+                currentPin = '';
+                currentName = '';
+                previousPendingCount = 0;
+                dashboard.classList.add('hidden');
+                loginScreen.classList.remove('hidden');
+                pinInput.value = '';
+                modNameInput.value = '';
+                loginError.textContent = '';
+                // Clear QR container
+                qrContainer.innerHTML = '';
+                // Clear session storage (optional)
+                sessionStorage.removeItem('eHapot_modName');
+                sessionStorage.removeItem('eHapot_pin');
+                // Focus PIN input
+                pinInput.focus();
+            }
+
+            // ============================================================
+            // 10. EVENT BINDINGS & INIT
+            // ============================================================
+            loginBtn.addEventListener('click', login);
+            lockBtn.addEventListener('click', logout);
+
+            // Allow Enter key on login fields
+            pinInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') login();
+            });
+            modNameInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') pinInput.focus();
+            });
+
+            // Auto-login if session exists (for convenience)
+            const savedName = sessionStorage.getItem('eHapot_modName');
+            const savedPin = sessionStorage.getItem('eHapot_pin');
+            if (savedName && savedPin) {
+                modNameInput.value = savedName;
+                pinInput.value = savedPin;
+                // Auto-login after a tiny delay to allow page to settle
+                setTimeout(login, 300);
+            }
+
+            // Visibility API: back off polling when tab is hidden (saves quota)
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) {
+                    if (pollInterval) {
+                        clearInterval(pollInterval);
+                        pollInterval = setInterval(fetchData, 30000); // 30s backup
+                    }
+                } else {
+                    if (pollInterval) {
+                        clearInterval(pollInterval);
+                        fetchData(); // immediate refresh
+                        pollInterval = setInterval(fetchData, 4000);
+                    }
+                }
+            });
+
+            console.log('[eHapot] Moderator dashboard initialised.');
+        })();
+    </script>
+
+</body>
+</html>
