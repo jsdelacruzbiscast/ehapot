@@ -671,14 +671,16 @@
     <script>
         (function() {
             'use strict';
-console.log('[eHapot] Endpoint being used:', ENDPOINT);
-if (ENDPOINT.includes('https://script.google.com/macros/s/AKfycbwBxCzLRBd1inBCwXuekBoVQDcnW6_XOZaPoas3pu-LZgsJV2Ql6IUwcjag5Oq4fvyVTA/exec') || ENDPOINT.includes('REPLACE_ME')) {
-    alert('⚠️ CONFIG ERROR: The ENDPOINT in config.js is still the placeholder. Please update it with your actual Apps Script URL.');
-}       
+
             // --- CONFIG ---
             const ENDPOINT = (typeof CONFIG !== 'undefined' && CONFIG.ENDPOINT) ?
                 CONFIG.ENDPOINT :
                 'https://script.google.com/macros/s/AKfycbwBxCzLRBd1inBCwXuekBoVQDcnW6_XOZaPoas3pu-LZgsJV2Ql6IUwcjag5Oq4fvyVTA/exec';
+
+            console.log('[eHapot] Endpoint being used:', ENDPOINT);
+            if (typeof CONFIG === 'undefined' || !CONFIG.ENDPOINT) {
+                alert('⚠️ CONFIG ERROR: config.js failed to load or ENDPOINT is missing. Please check the script tag and file path.');
+            }
             // --- DOM refs ---
             const loginScreen = document.getElementById('loginScreen');
             const dashboard = document.getElementById('dashboard');
