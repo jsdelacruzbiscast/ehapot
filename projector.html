@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eHapot · Projector</title>
+
+    <!-- Shared configuration -->
+    <script src="config.js"></script>
+
+    <style>
+        /* ================================================================
+               BISCAST PALETTE — HIGH CONTRAST FOR BIG SCREEN
+               ================================================================ */
+        :root {
+            --biscast-navy: #0A2B4E;
+            --biscast-blue: #1D5C9B;
+            --biscast-gold: #D4A017;
+            --biscast-light-gold: #F5C842;
+            --biscast-white: #FFFFFF;
+            --biscast-bg: #F4F7FC;
+        }
+
+        /* ---------- Reset ---------- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+        }
+
+        body {
+            background: var(--biscast-navy);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 24px;
+            color: white;
+        }
+
+        /* ---------- Container ---------- */
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            text-align: center;
+        }
+
+        /* ---------- Header ---------- */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--biscast-gold);
+            padding-bottom: 16px;
+            margin-bottom: 36px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .header h1 {
+            font-size: 2.8rem;
+            font-weight: 300;
+            letter-spacing: 2px;
+        }
+
+        .header h1 span {
+            color: var(--biscast-gold);
+            font-weight: 700;
+        }
+
+        .header .badge {
+            background: var(--biscast-gold);
+            color: var(--biscast-navy);
+            padding: 6px 24px;
+            border-radius: 60px;
+            font-weight: 700;
+            font-size: 1rem;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header .badge .pin-code {
+            background: var(--biscast-navy);
+            color: var(--biscast-light-gold);
+            padding: 2px 14px;
+            border-radius: 40px;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        /* ---------- ON AIR BOX (Pulsing border) ---------- */
+        .on-air-box {
+            background: var(--biscast-white);
+            color: var(--biscast-navy);
+            padding: 48px 32px;
+            border-radius: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            margin-bottom: 40px;
+            min-height: 280px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            border: 4px solid var(--biscast-gold);
+            animation: pulseBorder 2.4s infinite ease-in-out;
+            transition: border-color 0.3s;
+        }
+
+        @keyframes pulseBorder {
+            0% {
+                border-color: var(--biscast-gold);
+                box-shadow: 0 0 0 0 rgba(212, 160, 23, 0.3);
+            }
+            50% {
+                border-color: var(--biscast-light-gold);
+                box-shadow: 0 0 40px 12px rgba(212, 160, 23, 0.25);
+            }
+            100% {
+                border-color: var(--biscast-gold);
+                box-shadow: 0 0 0 0 rgba(212, 160, 23, 0.3);
+            }
+        }
+
+        .on-air-box .label {
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 6px;
+            color: var(--biscast-gold);
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        /* DYNAMIC FONT SIZE: scales from 3rem to 8rem based on viewport */
+        .on-air-box .question-text {
+            font-size: clamp(3rem, 8vw, 8rem);
+            font-weight: 700;
+            line-height: 1.2;
+            word-break: break-word;
+            color: var(--biscast-navy);
+        }
+
+        .on-air-box .question-text.empty {
+            color: #aaa;
+            font-weight: 300;
+            font-size: clamp(2rem, 4vw, 4rem);
+        }
+
+        .on-air-box .meta {
+            margin-top: 24px;
+            font-size: 1.6rem;
+            color: #666;
+            font-weight: 400;
+        }
+
+        .on-air-box .meta .highlight {
+            color: var(--biscast-blue);
+            font-weight: 600;
+        }
+
+        /* ---------- ON DECK SECTION ---------- */
+        .on-deck-section {
+            background: rgba(255, 255, 255, 0.07);
+            border-radius: 28px;
+            padding: 24px 28px;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .on-deck-section h3 {
+            color: var(--biscast-light-gold);
+            font-weight: 400;
+            letter-spacing: 3px;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+            text-align: left;
+        }
+
+        .deck-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 180px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .deck-list::-webkit-scrollbar {
+            width: 4px;
+        }
+        .deck-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+        }
+
+        .deck-item {
+            background: rgba(255, 255, 255, 0.06);
+            padding: 12px 20px;
+            border-radius: 14px;
+            font-size: 1.3rem;
+            text-align: left;
+            border-left: 4px solid var(--biscast-blue);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            color: #f0f0f0;
+        }
+
+        .deck-item .status-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: #4CAF50;
+            border-radius: 50%;
+            flex-shrink: 0;
+            animation: pulse-dot 1.8s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0% {
+                opacity: 0.4;
+            }
+            50% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0.4;
+            }
+        }
+
+        .deck-item .d-text {
+            flex: 1;
+            font-weight: 500;
+        }
+
+        .deck-item .d-meta {
+            font-size: 0.85rem;
+            color: #aaa;
+            white-space: nowrap;
+        }
+
+        .deck-empty {
+            color: rgba(255, 255, 255, 0.35);
+            text-align: center;
+            padding: 20px 0;
+            font-size: 1.1rem;
+            font-weight: 300;
+        }
+
+        /* ---------- Footer ---------- */
+        .footer-note {
+            margin-top: 32px;
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 0.85rem;
+            letter-spacing: 1.5px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            padding-top: 20px;
+        }
+
+        /* ---------- Connection status (subtle) ---------- */
+        .connection-status {
+            position: fixed;
+            bottom: 12px;
+            right: 20px;
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.2);
+            letter-spacing: 0.5px;
+        }
+        .connection-status .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        .connection-status .dot.online {
+            background: #4CAF50;
+        }
+        .connection-status .dot.offline {
+            background: #e53935;
+            animation: pulse-dot 0.8s infinite;
+        }
+
+        /* ---------- Responsive ---------- */
+        @media (max-width: 700px) {
+            .header h1 {
+                font-size: 1.8rem;
+            }
+            .on-air-box {
+                padding: 32px 20px;
+                min-height: 200px;
+            }
+            .on-air-box .question-text {
+                font-size: clamp(2.2rem, 10vw, 4.5rem);
+            }
+            .on-air-box .meta {
+                font-size: 1.2rem;
+            }
+            .deck-item {
+                font-size: 1rem;
+                padding: 10px 14px;
+                flex-wrap: wrap;
+            }
+            .deck-item .d-meta {
+                white-space: normal;
+                font-size: 0.75rem;
+            }
+            .on-deck-section {
+                padding: 16px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container" id="app">
+        <!-- Header -->
+        <div class="header">
+            <h1>🎤 <span>e</span>Hapot Q&amp;A</h1>
+            <span class="badge">
+                LIVE
+                <span class="pin-code" id="pinDisplay">----</span>
+            </span>
+        </div>
+
+        <!-- ON AIR BOX -->
+        <div class="on-air-box" id="onAirContainer">
+            <div class="label">📢 Now Answering</div>
+            <div class="question-text empty" id="onAirText">💡 Waiting for questions...</div>
+            <div class="meta" id="onAirMeta">Awaiting moderator approval</div>
+        </div>
+
+        <!-- ON DECK SECTION -->
+        <div class="on-deck-section">
+            <h3>⏳ Up Next (On Deck)</h3>
+            <div id="deckList" class="deck-list">
+                <div class="deck-empty">No questions queued</div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer-note">BISCAST · Student Development Services · eHapot v2.0</div>
+    </div>
+
+    <!-- Connection status indicator (subtle) -->
+    <div class="connection-status" id="connStatus">
+        <span class="dot online" id="statusDot"></span>
+        <span id="statusText">Live</span>
+    </div>
+
+    <!-- ================================================================
+    JAVASCRIPT ENGINE
+    ================================================================ -->
+    <script>
+        (function() {
+            'use strict';
+
+            // --- CONFIG ---
+            const ENDPOINT = (typeof CONFIG !== 'undefined' && CONFIG.ENDPOINT) ?
+                CONFIG.ENDPOINT :
+                'https://script.google.com/macros/s/REPLACE_ME/exec';
+
+            const POLL_INTERVAL_ACTIVE = 3000; // 3 seconds when visible
+            const POLL_INTERVAL_BACKOFF = 30000; // 30 seconds when hidden
+
+            // --- DOM refs ---
+            const onAirText = document.getElementById('onAirText');
+            const onAirMeta = document.getElementById('onAirMeta');
+            const deckList = document.getElementById('deckList');
+            const pinDisplay = document.getElementById('pinDisplay');
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+
+            // --- State ---
+            let pollTimer = null;
+            let isOnline = true;
+
+            // --- Get PIN from URL ---
+            const urlParams = new URLSearchParams(window.location.search);
+            const eventPin = urlParams.get('pin') || '0000';
+            pinDisplay.textContent = eventPin;
+
+            // --- Helper: update connection status ---
+            function setOnline(online) {
+                isOnline = online;
+                statusDot.className = 'dot ' + (online ? 'online' : 'offline');
+                statusText.textContent = online ? 'Live' : 'Reconnecting...';
+            }
+
+            // --- Core fetch function ---
+            async function fetchProjectorFeed() {
+                try {
+                    const res = await fetch(`${ENDPOINT}?action=getProjectorFeed&pin=${eventPin}`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const data = await res.json();
+
+                    setOnline(true);
+
+                    // --- Update ON AIR ---
+                    if (data.onAir) {
+                        onAirText.textContent = data.onAir.text;
+                        onAirText.className = 'question-text'; // remove empty class
+                        const submittedBy = escapeHtml(data.onAir.submittedBy || 'Anonymous');
+                        const ts = data.onAir.timestamp ? ' · ' + formatTime(data.onAir.timestamp) : '';
+                        onAirMeta.innerHTML = `Asked by: <span class="highlight">${submittedBy}</span>${ts}`;
+                    } else {
+                        onAirText.textContent = '💡 No live question';
+                        onAirText.className = 'question-text empty';
+                        onAirMeta.textContent = 'Waiting for moderator to promote a question';
+                    }
+
+                    // --- Update ON DECK ---
+                    if (data.onDeck && data.onDeck.length > 0) {
+                        deckList.innerHTML = data.onDeck.map(q => `
+                            <div class="deck-item">
+                                <span class="status-dot"></span>
+                                <span class="d-text">${escapeHtml(q.text)}</span>
+                                <span class="d-meta">— ${escapeHtml(q.submittedBy || 'Anonymous')}</span>
+                            </div>
+                        `).join('');
+                    } else {
+                        deckList.innerHTML = `<div class="deck-empty">📭 No questions queued</div>`;
+                    }
+
+                } catch (err) {
+                    setOnline(false);
+                    console.error('Projector fetch error:', err);
+                    // Keep last known content; don't blank the screen
+                }
+            }
+
+            // --- Helper: format ISO timestamp to readable time ---
+            function formatTime(isoString) {
+                try {
+                    const d = new Date(isoString);
+                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                } catch (e) { return ''; }
+            }
+
+            // --- Helper: HTML escaping ---
+            function escapeHtml(unsafe) {
+                if (!unsafe) return '';
+                const map = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                };
+                return unsafe.replace(/[&<>"']/g, function(m) { return map[m]; });
+            }
+
+            // --- Start/stop polling based on visibility ---
+            function startPolling(interval) {
+                if (pollTimer) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+                pollTimer = setInterval(fetchProjectorFeed, interval);
+            }
+
+            function stopPolling() {
+                if (pollTimer) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+            }
+
+            // --- Visibility API: back off when tab is hidden ---
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) {
+                    // Switch to slow polling (saves quota)
+                    if (pollTimer) {
+                        clearInterval(pollTimer);
+                        pollTimer = setInterval(fetchProjectorFeed, POLL_INTERVAL_BACKOFF);
+                    }
+                } else {
+                    // Back to fast polling
+                    if (pollTimer) {
+                        clearInterval(pollTimer);
+                        pollTimer = setInterval(fetchProjectorFeed, POLL_INTERVAL_ACTIVE);
+                    }
+                    // Immediate refresh when tab becomes visible
+                    fetchProjectorFeed();
+                }
+            });
+
+            // --- Init ---
+            // Initial fetch
+            fetchProjectorFeed();
+
+            // Start active polling
+            startPolling(POLL_INTERVAL_ACTIVE);
+
+            // Set initial status
+            setOnline(true);
+
+            console.log('[eHapot] Projector initialised. PIN:', eventPin, 'Endpoint:', ENDPOINT);
+
+            // --- Re-fetch when coming back online (optional) ---
+            window.addEventListener('online', function() {
+                setOnline(true);
+                fetchProjectorFeed();
+                // Restart polling if it was stopped
+                if (!pollTimer) {
+                    startPolling(POLL_INTERVAL_ACTIVE);
+                }
+            });
+
+            window.addEventListener('offline', function() {
+                setOnline(false);
+            });
+
+        })();
+    </script>
+
+</body>
+</html>
