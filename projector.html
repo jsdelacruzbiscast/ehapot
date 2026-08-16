@@ -58,6 +58,14 @@
     .modal-actions{display:flex;gap:10px;justify-content:center;margin-top:18px}
     .modal-actions button{border:0;border-radius:14px;padding:11px 20px;background:var(--blue);color:#fff;font-weight:700;cursor:pointer}
     .modal-actions button:hover{background:var(--navy)}
+
+    .qr-corner{position:fixed;left:18px;bottom:12px;z-index:15;background:#fff;color:var(--navy);
+      border-radius:18px;padding:12px 12px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;
+      box-shadow:0 12px 34px rgba(0,0,0,.4);cursor:pointer;border:3px solid var(--gold)}
+    .qr-corner[hidden]{display:none}
+    .qr-corner canvas,.qr-corner img{display:block;width:112px;height:112px}
+    .qr-corner-label{font-size:.72rem;font-weight:800;letter-spacing:.3px;text-align:center;line-height:1.3}
+    .qr-corner-label span{color:var(--blue)}
     @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
   </style>
 </head>
@@ -83,8 +91,13 @@
 <div class="status" aria-live="polite"><span id="statusDot" class="status-dot"></span><span id="statusText">Connecting…</span></div>
 
 <div class="controls" id="controls">
-  <button id="qrToggleBtn" class="ctrl-btn" type="button" title="Show audience QR code">📲 QR Code</button>
-  <button id="fsToggleBtn" class="ctrl-btn" type="button" title="Toggle fullscreen">⛶ Fullscreen</button>
+  <button id="qrToggleBtn" class="ctrl-btn" type="button" title="Show a QR code onscreen for the audience" aria-pressed="false">📲 Show QR</button>
+  <button id="fsToggleBtn" class="ctrl-btn" type="button" title="Toggle kiosk mode (hides address bar and tabs)" aria-pressed="false">🖥️ Kiosk Mode</button>
+</div>
+
+<div class="qr-corner" id="qrCorner" hidden title="Click to enlarge">
+  <div id="qrCornerCanvas" aria-label="QR code for audience entry"></div>
+  <div class="qr-corner-label">📲 Scan to Ask · <span id="qrCornerPin"></span></div>
 </div>
 
 <dialog id="qrDialog" aria-labelledby="qrTitle">
@@ -254,13 +267,18 @@
   }
 
   // ------------------------------------------------------------------
-  // QR code (v2.4.0): lets the presenter pull up the audience entry QR
-  // without switching back to the launchpad tab.
+  // QR code (v2.4.0): a persistent corner overlay so the audience can
+  // scan continuously, plus an enlarge-on-click modal for when someone
+  // in the back needs a bigger code.
   // ------------------------------------------------------------------
   const qrDialog = document.getElementById('qrDialog');
   const qrCanvas = document.getElementById('qrCanvas');
   const qrUrlText = document.getElementById('qrUrlText');
   const qrToggleBtn = document.getElementById('qrToggleBtn');
+  const qrCorner = document.getElementById('qrCorner');
+  const qrCornerCanvas = document.getElementById('qrCornerCanvas');
+  const qrCornerPin = document.getElementById('qrCornerPin');
+  let qrCornerRendered = false;
 
   function submitUrl() {
     const url = new URL('submit.html', window.location.href);
@@ -268,34 +286,51 @@
     return url.href;
   }
 
-  function showQr() {
-    const url = submitUrl();
-    qrCanvas.replaceChildren();
-    qrUrlText.textContent = `Event ${eventPin}`;
-
+  function renderQrInto(container, size) {
+    container.replaceChildren();
     if (typeof QRCode === 'undefined') {
-      qrCanvas.textContent = 'QR library could not be loaded.';
-    } else {
-      new QRCode(qrCanvas, {
-        text: url,
-        width: 260,
-        height: 260,
-        colorDark: '#0A2B4E',
-        colorLight: '#FFFFFF',
-        correctLevel: QRCode.CorrectLevel.H
-      });
+      container.textContent = 'QR library could not be loaded.';
+      return;
     }
+    new QRCode(container, {
+      text: submitUrl(),
+      width: size,
+      height: size,
+      colorDark: '#0A2B4E',
+      colorLight: '#FFFFFF',
+      correctLevel: QRCode.CorrectLevel.H
+    });
+  }
+
+  function showQrModal() {
+    qrUrlText.textContent = `Event ${eventPin}`;
+    renderQrInto(qrCanvas, 260);
     qrDialog.showModal();
   }
 
-  qrToggleBtn.addEventListener('click', showQr);
+  function setQrCornerVisible(visible) {
+    qrCorner.hidden = !visible;
+    qrToggleBtn.textContent = visible ? '❌ Hide QR' : '📲 Show QR';
+    qrToggleBtn.setAttribute('aria-pressed', String(visible));
+    if (visible && !qrCornerRendered) {
+      qrCornerPin.textContent = eventPin;
+      renderQrInto(qrCornerCanvas, 112);
+      qrCornerRendered = true;
+    }
+  }
+
+  qrToggleBtn.addEventListener('click', () => setQrCornerVisible(qrCorner.hidden));
+  qrCorner.addEventListener('click', showQrModal);
   document.getElementById('closeQrBtn').addEventListener('click', () => qrDialog.close());
   qrDialog.addEventListener('click', e => { if (e.target === qrDialog) qrDialog.close(); });
 
   // ------------------------------------------------------------------
-  // Fullscreen (v2.4.0): uses the Fullscreen API so the browser hides
+  // Kiosk mode (v2.4.0): uses the Fullscreen API so the browser hides
   // its address bar / tab strip. Must be triggered by a user gesture —
   // browsers block requestFullscreen() called automatically on load.
+  // This is the closest a webpage can get to real kiosk mode; a fully
+  // locked-down kiosk (no Esc-to-exit) requires launching the browser
+  // itself with a kiosk flag, e.g. `chrome --kiosk <projector URL>`.
   // ------------------------------------------------------------------
   const fsToggleBtn = document.getElementById('fsToggleBtn');
 
@@ -303,26 +338,37 @@
     return !!document.fullscreenElement;
   }
 
-  async function toggleFullscreen() {
+  async function toggleKioskMode() {
     try {
       if (!isFullscreen()) await document.documentElement.requestFullscreen();
       else await document.exitFullscreen();
     } catch (err) {
-      console.error('[eHapot projector] fullscreen unavailable', err);
+      console.error('[eHapot projector] kiosk mode unavailable', err);
     }
   }
 
   function updateFsButton() {
-    fsToggleBtn.textContent = isFullscreen() ? '🡼 Exit Fullscreen' : '⛶ Fullscreen';
+    const on = isFullscreen();
+    fsToggleBtn.textContent = on ? '🡼 Exit Kiosk Mode' : '🖥️ Kiosk Mode';
+    fsToggleBtn.setAttribute('aria-pressed', String(on));
   }
 
-  fsToggleBtn.addEventListener('click', toggleFullscreen);
+  fsToggleBtn.addEventListener('click', toggleKioskMode);
   document.addEventListener('fullscreenchange', updateFsButton);
 
+  // Keyboard shortcuts: handy once the mouse cursor is hidden in kiosk mode.
+  document.addEventListener('keydown', e => {
+    if (e.target && ['INPUT','TEXTAREA'].includes(e.target.tagName)) return;
+    if (e.key.toLowerCase() === 'k') toggleKioskMode();
+    if (e.key.toLowerCase() === 'q') setQrCornerVisible(qrCorner.hidden);
+  });
+
   // ------------------------------------------------------------------
-  // Idle fade (v2.4.0): once in fullscreen, fade the controls out after
-  // a few seconds of no mouse movement so they don't sit on top of the
-  // question for the audience; a nudge of the mouse brings them back.
+  // Idle fade (v2.4.0): once in kiosk mode, fade the presenter controls
+  // out after a few seconds of no mouse movement so they don't sit on
+  // top of the question; a nudge of the mouse brings them back. The
+  // audience-facing QR corner is intentionally excluded so it stays
+  // scannable the whole time.
   // ------------------------------------------------------------------
   const controls = document.getElementById('controls');
   let idleTimer = null;
