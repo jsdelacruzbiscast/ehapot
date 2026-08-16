@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>eHapot · Projector</title>
   <script src="config.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     :root{--navy:#0A2B4E;--blue:#1D5C9B;--gold:#D4A017;--lg:#F5C842;--white:#fff}
     *{box-sizing:border-box}
@@ -39,6 +40,24 @@
     .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#F5C842}
     .status-dot.online{background:#4CAF50}.status-dot.offline{background:#e53935}
     .fatal{background:#fff3f3;color:#8a1c1c;border:3px solid #c62828;padding:24px;border-radius:20px;font-size:1.2rem}
+
+    .controls{position:fixed;top:16px;right:18px;display:flex;gap:10px;z-index:20;
+      opacity:1;transition:opacity .5s ease}
+    .controls.idle{opacity:.08}
+    .controls.idle:hover{opacity:1}
+    .ctrl-btn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;
+      border-radius:14px;padding:10px 16px;font-size:.95rem;font-weight:700;cursor:pointer;
+      backdrop-filter:blur(6px);display:flex;align-items:center;gap:8px}
+    .ctrl-btn:hover{background:rgba(255,255,255,.22)}
+    .ctrl-btn:focus-visible{outline:3px solid var(--lg);outline-offset:2px}
+
+    dialog{border:0;border-radius:24px;padding:0;box-shadow:0 30px 90px rgba(0,0,0,.5);width:min(420px,90vw)}
+    dialog::backdrop{background:rgba(10,43,78,.75)}
+    .modal{padding:28px;text-align:center;background:#fff;color:var(--navy);border-radius:24px}
+    #qrCanvas{display:flex;justify-content:center;margin:18px auto}
+    .modal-actions{display:flex;gap:10px;justify-content:center;margin-top:18px}
+    .modal-actions button{border:0;border-radius:14px;padding:11px 20px;background:var(--blue);color:#fff;font-weight:700;cursor:pointer}
+    .modal-actions button:hover{background:var(--navy)}
     @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
   </style>
 </head>
@@ -62,6 +81,22 @@
 </main>
 
 <div class="status" aria-live="polite"><span id="statusDot" class="status-dot"></span><span id="statusText">Connecting…</span></div>
+
+<div class="controls" id="controls">
+  <button id="qrToggleBtn" class="ctrl-btn" type="button" title="Show audience QR code">📲 QR Code</button>
+  <button id="fsToggleBtn" class="ctrl-btn" type="button" title="Toggle fullscreen">⛶ Fullscreen</button>
+</div>
+
+<dialog id="qrDialog" aria-labelledby="qrTitle">
+  <div class="modal">
+    <h2 id="qrTitle">Scan to Ask a Question</h2>
+    <p id="qrUrlText"></p>
+    <div id="qrCanvas" aria-label="QR code for audience entry"></div>
+    <div class="modal-actions">
+      <button id="closeQrBtn" type="button">Close</button>
+    </div>
+  </div>
+</dialog>
 
 <script>
 (() => {
@@ -217,6 +252,89 @@
       if (myGen === pollGen && !stopped) schedulePoll(nextInterval());
     }
   }
+
+  // ------------------------------------------------------------------
+  // QR code (v2.4.0): lets the presenter pull up the audience entry QR
+  // without switching back to the launchpad tab.
+  // ------------------------------------------------------------------
+  const qrDialog = document.getElementById('qrDialog');
+  const qrCanvas = document.getElementById('qrCanvas');
+  const qrUrlText = document.getElementById('qrUrlText');
+  const qrToggleBtn = document.getElementById('qrToggleBtn');
+
+  function submitUrl() {
+    const url = new URL('submit.html', window.location.href);
+    url.searchParams.set('pin', eventPin);
+    return url.href;
+  }
+
+  function showQr() {
+    const url = submitUrl();
+    qrCanvas.replaceChildren();
+    qrUrlText.textContent = `Event ${eventPin}`;
+
+    if (typeof QRCode === 'undefined') {
+      qrCanvas.textContent = 'QR library could not be loaded.';
+    } else {
+      new QRCode(qrCanvas, {
+        text: url,
+        width: 260,
+        height: 260,
+        colorDark: '#0A2B4E',
+        colorLight: '#FFFFFF',
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    }
+    qrDialog.showModal();
+  }
+
+  qrToggleBtn.addEventListener('click', showQr);
+  document.getElementById('closeQrBtn').addEventListener('click', () => qrDialog.close());
+  qrDialog.addEventListener('click', e => { if (e.target === qrDialog) qrDialog.close(); });
+
+  // ------------------------------------------------------------------
+  // Fullscreen (v2.4.0): uses the Fullscreen API so the browser hides
+  // its address bar / tab strip. Must be triggered by a user gesture —
+  // browsers block requestFullscreen() called automatically on load.
+  // ------------------------------------------------------------------
+  const fsToggleBtn = document.getElementById('fsToggleBtn');
+
+  function isFullscreen() {
+    return !!document.fullscreenElement;
+  }
+
+  async function toggleFullscreen() {
+    try {
+      if (!isFullscreen()) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch (err) {
+      console.error('[eHapot projector] fullscreen unavailable', err);
+    }
+  }
+
+  function updateFsButton() {
+    fsToggleBtn.textContent = isFullscreen() ? '🡼 Exit Fullscreen' : '⛶ Fullscreen';
+  }
+
+  fsToggleBtn.addEventListener('click', toggleFullscreen);
+  document.addEventListener('fullscreenchange', updateFsButton);
+
+  // ------------------------------------------------------------------
+  // Idle fade (v2.4.0): once in fullscreen, fade the controls out after
+  // a few seconds of no mouse movement so they don't sit on top of the
+  // question for the audience; a nudge of the mouse brings them back.
+  // ------------------------------------------------------------------
+  const controls = document.getElementById('controls');
+  let idleTimer = null;
+
+  function resetIdleTimer() {
+    controls.classList.remove('idle');
+    clearTimeout(idleTimer);
+    if (isFullscreen()) idleTimer = setTimeout(() => controls.classList.add('idle'), 3000);
+  }
+
+  document.addEventListener('mousemove', resetIdleTimer);
+  document.addEventListener('fullscreenchange', resetIdleTimer);
 
   if (!CONFIG || !CONFIG.ENDPOINT) fatal('eHapot configuration is unavailable.');
   else if (!pinRegex.test(eventPin)) fatal('Invalid or missing event code. Open this projector from the eHapot launchpad.');
