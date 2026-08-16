@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eHapot · Ask a Question</title>
+  <script src="config.js"></script>
+  <style>
+    :root{--navy:#0A2B4E;--blue:#1D5C9B;--gold:#D4A017;--bg:#F4F7FC;--white:#fff;--green:#2E7D32;--red:#C62828}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:var(--bg);font-family:"Segoe UI",system-ui,sans-serif;color:#26364a;padding:18px}
+    main{width:min(640px,100%);margin:0 auto;background:#fff;border-radius:28px;padding:26px;box-shadow:0 16px 55px rgba(10,43,78,.14);border-top:7px solid var(--gold)}
+    .brand{text-align:center;color:var(--navy);font-weight:850;font-size:2.4rem}.brand span{color:var(--gold)}
+    .event{text-align:center;color:#667085;margin:4px 0 24px}
+    label{display:block;font-weight:750;color:var(--navy);margin:16px 0 8px}
+    input,textarea{width:100%;border:2px solid #cbd5e1;border-radius:14px;padding:13px;font:inherit;color:#1f2937;background:#fff}
+    textarea{min-height:170px;resize:vertical;line-height:1.5}
+    input:focus-visible,textarea:focus-visible,button:focus-visible{outline:3px solid #F5C842;outline-offset:2px}
+    .counter{text-align:right;color:#667085;font-size:.85rem;margin-top:5px}
+    button{width:100%;border:0;border-radius:14px;padding:14px;background:var(--blue);color:#fff;font-weight:800;font-size:1rem;cursor:pointer;margin-top:14px}
+    button:hover:not(:disabled){background:var(--navy)} button:disabled{opacity:.58;cursor:not-allowed}
+    .status{min-height:24px;margin-top:14px;padding:10px 12px;border-radius:10px;display:none}
+    .status.show{display:block}.status.success{background:#edf7ef;color:var(--green)}.status.error{background:#fff0f0;color:var(--red)}
+    .privacy{font-size:.8rem;color:#7b8492;margin-top:18px;line-height:1.45}
+
+    .myq{margin-top:24px;border-top:1px solid #eef1f4;padding-top:18px}
+    .myq h2{font-size:.95rem;color:var(--navy);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+    .myq h2 button{width:auto;margin:0;padding:6px 12px;font-size:.78rem;font-weight:700}
+    .myq-item{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid #f3f5f7}
+    .myq-item:last-child{border-bottom:0}
+    .myq-text{flex:1;font-size:.88rem;color:#374151;overflow-wrap:anywhere}
+    .myq-badge{flex-shrink:0;font-size:.72rem;font-weight:800;padding:3px 10px;border-radius:999px;white-space:nowrap}
+    .myq-badge.PENDING{background:#fff8e1;color:#8a6d00}
+    .myq-badge.APPROVED{background:#eaf6ed;color:var(--green)}
+    .myq-badge.ON_AIR{background:var(--gold);color:var(--navy)}
+    .myq-badge.COMPLETED{background:var(--navy);color:#fff}
+    .myq-badge.REJECTED{background:#fff0f0;color:var(--red)}
+    .myq-reason{font-size:.78rem;color:#7b8492;margin-top:3px}
+    .myq-empty{font-size:.85rem;color:#98a2b3;text-align:center;padding:10px 0}
+  </style>
+</head>
+<body>
+<main>
+  <div class="brand">e<span>Hapot</span></div>
+  <div id="eventLabel" class="event">Loading event…</div>
+
+  <form id="questionForm" novalidate>
+    <label for="submittedBy">Name or alias <span aria-hidden="true">(optional)</span></label>
+    <input id="submittedBy" maxlength="80" autocomplete="name" placeholder="Leave blank to submit as Anonymous">
+
+    <label for="question">Your question</label>
+    <textarea id="question" required maxlength="500" aria-describedby="counter"></textarea>
+    <div id="counter" class="counter">0 / 500</div>
+
+    <button id="submitBtn" type="submit">Send Question</button>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </form>
+
+  <div class="privacy">Questions are placed in a moderation queue before public display. Do not include passwords, account numbers, or other sensitive personal information.</div>
+
+  <section class="myq" id="myQuestionsSection" hidden>
+    <h2>My Questions <button id="refreshMyQBtn" class="secondary" type="button" style="border:1px solid #cbd5e1;background:#fff;color:var(--navy);border-radius:10px;cursor:pointer">Refresh status</button></h2>
+    <div id="myQuestionsList"></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  if (typeof CONFIG === 'undefined') {
+    document.body.innerHTML = '<main style="font-family:system-ui;padding:2rem"><h1>eHapot configuration error</h1><p>config.js could not be loaded.</p></main>';
+    throw new Error('CONFIG is not defined');
+  }
+
+  const form = document.getElementById('questionForm');
+  const question = document.getElementById('question');
+  const submittedBy = document.getElementById('submittedBy');
+  const counter = document.getElementById('counter');
+  const submitBtn = document.getElementById('submitBtn');
+  const statusBox = document.getElementById('status');
+  const eventLabel = document.getElementById('eventLabel');
+
+  const pinRegex = new RegExp(CONFIG.EVENT_PIN_PATTERN);
+  const queryPin = new URLSearchParams(location.search).get('pin');
+  let eventPin = queryPin || sessionStorage.getItem('eHapot_session_pin') || '';
+
+  if (queryPin && pinRegex.test(queryPin)) {
+    sessionStorage.setItem('eHapot_session_pin', queryPin);
+    history.replaceState({}, document.title, location.pathname);
+  }
+
+  /**
+   * ----------------------------------------------------------------
+   * "MY QUESTIONS" STATUS TRACKING (v2.3.0)
+   *  - The backend has no notion of "your" questions; it only knows
+   *    individual question IDs. So the capability to check a question's
+   *    status is the ID itself, kept client-side, per event PIN.
+   *  - This means status tracking is per-browser/per-device, not per-person
+   *    — clearing site data or switching devices loses the list, which is
+   *    an intentional privacy trade-off (no server-side identity to leak).
+   * ----------------------------------------------------------------
+   */
+  const myQSection = document.getElementById('myQuestionsSection');
+  const myQList = document.getElementById('myQuestionsList');
+  const refreshMyQBtn = document.getElementById('refreshMyQBtn');
+  const MY_Q_LIMIT = 20;
+
+  function myQStorageKey() {
+    return `eHapot_my_questions_${eventPin}`;
+  }
+
+  function loadMyQuestions() {
+    try {
+      const raw = localStorage.getItem(myQStorageKey());
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function saveMyQuestions(list) {
+    try {
+      localStorage.setItem(myQStorageKey(), JSON.stringify(list.slice(-MY_Q_LIMIT)));
+    } catch (_) { /* storage unavailable; degrade silently */ }
+  }
+
+  function rememberSubmittedQuestion(id, preview) {
+    const list = loadMyQuestions();
+    list.push({ id, preview, status: 'PENDING', reason: '' });
+    saveMyQuestions(list);
+    renderMyQuestions(list);
+  }
+
+  function badgeLabel(status) {
+    return {
+      PENDING: '⏳ Pending',
+      APPROVED: '✅ Approved',
+      ON_AIR: '📢 On screen now',
+      COMPLETED: '✅ Answered',
+      REJECTED: '❌ Not shown'
+    }[status] || status;
+  }
+
+  function renderMyQuestions(list) {
+    if (!list.length) {
+      myQSection.hidden = true;
+      return;
+    }
+    myQSection.hidden = false;
+    myQList.replaceChildren();
+
+    list.slice().reverse().forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'myq-item';
+
+      const text = document.createElement('div');
+      text.className = 'myq-text';
+      text.textContent = item.preview;
+      if (item.status === 'REJECTED' && item.reason) {
+        const reason = document.createElement('div');
+        reason.className = 'myq-reason';
+        reason.textContent = `Moderator note: ${item.reason}`;
+        text.append(document.createElement('br'), reason);
+      }
+
+      const badge = document.createElement('span');
+      badge.className = `myq-badge ${item.status}`;
+      badge.textContent = badgeLabel(item.status);
+
+      row.append(text, badge);
+      myQList.append(row);
+    });
+  }
+
+  async function refreshMyQuestions() {
+    const list = loadMyQuestions();
+    if (!list.length) return;
+
+    refreshMyQBtn.disabled = true;
+    const original = refreshMyQBtn.textContent;
+    refreshMyQBtn.textContent = 'Checking…';
+
+    try {
+      await Promise.all(list.map(async item => {
+        try {
+          const data = await post({ action: 'getQuestionStatus', pin: eventPin, questionId: item.id });
+          item.status = data.status;
+          item.reason = data.rejectionReason || '';
+        } catch (_) {
+          // Leave last-known status if a single lookup fails.
+        }
+      }));
+      saveMyQuestions(list);
+      renderMyQuestions(list);
+    } finally {
+      refreshMyQBtn.disabled = false;
+      refreshMyQBtn.textContent = original;
+    }
+  }
+
+  refreshMyQBtn.addEventListener('click', refreshMyQuestions);
+
+  function getClientId() {
+    let id = localStorage.getItem('eHapot_client_id');
+    if (!id) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      localStorage.setItem('eHapot_client_id', id);
+    }
+    return id;
+  }
+
+  function showStatus(type, message) {
+    statusBox.className = `status show ${type}`;
+    statusBox.textContent = message;
+  }
+
+  function updateCounter() {
+    counter.textContent = `${question.value.length} / ${CONFIG.MAX_QUESTION_LENGTH}`;
+  }
+
+  function remainingCooldown() {
+    const last = Number(localStorage.getItem(`eHapot_last_submit_${eventPin}`) || 0);
+    return Math.max(0, CONFIG.RATE_LIMIT_MS - (Date.now() - last));
+  }
+
+  function applyCooldown() {
+    const left = remainingCooldown();
+    if (!left) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Send Question';
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = `Please wait ${Math.ceil(left/1000)}s`;
+    setTimeout(applyCooldown, Math.min(1000,left));
+  }
+
+  async function post(payload) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
+    try {
+      const res = await fetch(CONFIG.ENDPOINT, {
+        method:'POST',
+        headers:{'Content-Type':'text/plain;charset=UTF-8'},
+        body:JSON.stringify(payload),
+        signal:controller.signal,
+        redirect:'follow'
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data || data.ok !== true) throw new Error(data?.error || 'Submission failed');
+      return data;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async function submitQuestion() {
+    const text = question.value.trim();
+    const name = submittedBy.value.trim();
+
+    if (!pinRegex.test(eventPin)) {
+      showStatus('error','This audience link does not contain a valid event code.');
+      return;
+    }
+    if (text.length < CONFIG.MIN_QUESTION_LENGTH || text.length > CONFIG.MAX_QUESTION_LENGTH) {
+      showStatus('error',`Question must contain ${CONFIG.MIN_QUESTION_LENGTH}–${CONFIG.MAX_QUESTION_LENGTH} characters.`);
+      question.focus();
+      return;
+    }
+    if (remainingCooldown() > 0) {
+      showStatus('error','Please wait before submitting another question.');
+      applyCooldown();
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending…';
+
+    try {
+      const result = await post({
+        action:'submitQuestion',
+        pin:eventPin,
+        text,
+        submittedBy:name || 'Anonymous',
+        clientId:getClientId()
+      });
+
+      localStorage.setItem(`eHapot_last_submit_${eventPin}`, String(Date.now()));
+      const preview = text.length > 80 ? text.slice(0, 77) + '…' : text;
+      rememberSubmittedQuestion(result.id, preview);
+      question.value = '';
+      updateCounter();
+      showStatus('success','Question received. It is now in the moderation queue.');
+    } catch (err) {
+      console.error('[eHapot submit]', err);
+      showStatus('error', err.name === 'AbortError' ? 'Request timed out. Please try again.' : err.message);
+    } finally {
+      applyCooldown();
+    }
+  }
+
+  form.addEventListener('submit', e => { e.preventDefault(); submitQuestion(); });
+  question.addEventListener('input', updateCounter);
+  question.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      submitQuestion();
+    }
+  });
+
+  if (!pinRegex.test(eventPin)) {
+    eventLabel.textContent = 'Invalid event link';
+    form.querySelectorAll('input,textarea,button').forEach(el => el.disabled = true);
+    showStatus('error','Open this page by scanning the official eHapot QR code or using the Audience Entry link.');
+  } else {
+    eventLabel.textContent = `Event ${eventPin}`;
+    updateCounter();
+    applyCooldown();
+    renderMyQuestions(loadMyQuestions());
+    refreshMyQuestions();
+  }
+})();
+</script>
+</body>
+</html>
