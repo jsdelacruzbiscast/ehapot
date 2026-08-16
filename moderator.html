@@ -37,7 +37,12 @@
     .air{background:var(--gold);color:var(--navy)}.complete{background:var(--navy);color:#fff}
     button:disabled{opacity:.5;cursor:not-allowed}
     .empty{color:#98a2b3;text-align:center;padding:35px 6px}
-    .side{display:flex;gap:14px;align-items:center}.audience-link{background:#fff;padding:10px 12px;border-radius:12px;font-size:.78rem;max-width:260px;overflow-wrap:anywhere}
+    .side{display:flex;gap:10px;align-items:center}
+    .audience-link-wrap{display:flex;align-items:center;gap:6px;background:#fff;border-radius:12px;padding:4px 4px 4px 12px}
+    .audience-link{color:var(--blue);text-decoration:none;font-size:.78rem;max-width:230px;overflow-wrap:anywhere;font-weight:600}
+    .audience-link:hover,.audience-link:focus-visible{text-decoration:underline}
+    #copyAudienceBtn{border:0;background:transparent;padding:7px 9px;border-radius:9px;cursor:pointer;font-size:.95rem;line-height:1}
+    #copyAudienceBtn:hover{background:#eef2f7}
     .hint{font-size:.8rem;color:#667085;margin-top:10px}
     @media(max-width:950px){.columns{grid-template-columns:1fr}.side{display:none}}
   </style>
@@ -69,7 +74,10 @@
     <div class="toolbar">
       <div class="info"><span id="moderatorLabel"></span> · Event <span id="eventLabel"></span></div>
       <div class="side">
-        <div id="audienceLink" class="audience-link" aria-label="Audience entry URL"></div>
+        <div class="audience-link-wrap">
+          <a id="audienceLink" class="audience-link" target="_blank" rel="noopener noreferrer" aria-label="Audience entry URL"></a>
+          <button id="copyAudienceBtn" type="button" title="Copy audience link">📋</button>
+        </div>
         <a id="sheetLink" class="secondary" style="text-decoration:none;padding:9px 12px;border-radius:11px;display:inline-block"
            target="_blank" rel="noopener noreferrer">📊 Audit Log</a>
       </div>
@@ -177,8 +185,27 @@
   }
 
   function showAudienceLink() {
-    document.getElementById('audienceLink').textContent = audienceUrl();
+    const el = document.getElementById('audienceLink');
+    const url = audienceUrl();
+    el.textContent = url;
+    el.href = url;
   }
+
+  document.getElementById('copyAudienceBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('copyAudienceBtn');
+    const url = audienceUrl();
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch (_) {
+      // Clipboard API unavailable or blocked (e.g. non-HTTPS, permissions) —
+      // fall back to a manual-copy prompt instead of failing silently.
+      window.prompt('Copy this link:', url);
+      return;
+    }
+    const original = btn.textContent;
+    btn.textContent = '✅';
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  });
 
   function showSheetLink() {
     // Only ever populated after a successful verifyModerator() call, so the
@@ -421,6 +448,7 @@
     loginPanel.style.display = 'block';
     setConnection('Locked');
     document.getElementById('sheetLink').removeAttribute('href');
+    document.getElementById('audienceLink').removeAttribute('href');
     secretInput.value = '';
     searchTerm = '';
     document.getElementById('searchBox').value = '';
