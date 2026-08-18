@@ -84,7 +84,16 @@
     .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
     .toolbar input[type="search"]{flex:1;min-width:180px;border:2px solid #cbd5e1;border-radius:11px;
       padding:9px 12px;font:inherit}
-    #sheetLink{text-decoration:none;padding:9px 14px;border-radius:11px;display:inline-flex;align-items:center}
+    dialog{border:0;border-radius:22px;padding:0;box-shadow:0 26px 80px rgba(10,43,78,.25);width:min(380px,90vw)}
+    dialog::backdrop{background:rgba(10,43,78,.55)}
+    .admin-modal{padding:26px}
+    .admin-modal h2{margin:0 0 6px;color:var(--navy);font-size:1.15rem}
+    .admin-modal p{margin:0 0 16px;color:#667085;font-size:.85rem;line-height:1.4}
+    .admin-modal input{margin-bottom:6px}
+    .admin-modal .error{min-height:18px;font-size:.82rem}
+    .admin-modal-actions{display:flex;gap:10px;margin-top:14px}
+    .admin-modal-actions button{flex:1}
+    .admin-modal-actions .primary{margin-top:0}
 
     @media(max-width:950px){.columns{grid-template-columns:1fr}.column{max-height:none}.header-info{display:none}}
     @media(max-width:900px){.setup-grid{grid-template-columns:1fr}}
@@ -161,7 +170,7 @@
 
     <div class="toolbar">
       <input id="searchBox" type="search" placeholder="Filter by text or name…" autocomplete="off">
-      <a id="sheetLink" class="secondary" target="_blank" rel="noopener noreferrer">📊 Audit Log</a>
+      <button id="adminAccessBtn" class="secondary" type="button">🔐 Admin Access</button>
       <button id="exportBtn" class="secondary" type="button">📄 Export PDF Report</button>
       <button id="refreshBtn" class="secondary" type="button">Refresh</button>
       <button id="logoutBtn" class="secondary" type="button">Lock</button>
@@ -183,6 +192,20 @@
     </div>
   </section>
 </main>
+
+<dialog id="adminDialog" aria-labelledby="adminDialogTitle">
+  <div class="admin-modal">
+    <h2 id="adminDialogTitle">🔐 Admin Access</h2>
+    <p>Separate from your moderator password. Grants a one-time link to the live Google Sheet (QnA_Master / Audit_Log) for this event.</p>
+    <label for="adminSecretInput">Admin password</label>
+    <input id="adminSecretInput" type="password" autocomplete="off">
+    <div id="adminDialogError" class="error" aria-live="polite"></div>
+    <div class="admin-modal-actions">
+      <button id="adminCancelBtn" class="secondary" type="button">Cancel</button>
+      <button id="adminSubmitBtn" class="primary" type="button" style="margin-top:0">Unlock</button>
+    </div>
+  </div>
+</dialog>
 
 <script>
 (() => {
@@ -295,13 +318,66 @@
     }, 1500);
   });
 
-  function showSheetLink() {
-    // Only ever populated after a successful verifyModerator() call, so the
-    // raw Sheet URL is never present in markup an unauthenticated visitor
-    // could reach (unlike the old public launchpad card).
-    const link = document.getElementById('sheetLink');
-    if (CONFIG.SHEET_URL) link.href = CONFIG.SHEET_URL;
-    else link.style.display = 'none';
+  // ------------------------------------------------------------------
+  // Admin Access (v2.4.1): a second, separate credential tier gating the
+  // raw Google Sheet link. Holding the moderator password alone no longer
+  // reveals it — see verifyAdmin_ in Code.gs. The URL is cached in memory
+  // only (never localStorage) and cleared on logout, so re-entering the
+  // dashboard always re-prompts.
+  // ------------------------------------------------------------------
+  let adminSheetUrl = null;
+
+  const adminDialog = document.getElementById('adminDialog');
+  const adminSecretInput = document.getElementById('adminSecretInput');
+  const adminDialogError = document.getElementById('adminDialogError');
+  const adminSubmitBtn = document.getElementById('adminSubmitBtn');
+  const adminAccessBtn = document.getElementById('adminAccessBtn');
+
+  function resetAdminAccess() {
+    adminSheetUrl = null;
+    adminAccessBtn.textContent = '🔐 Admin Access';
+  }
+
+  adminAccessBtn.addEventListener('click', () => {
+    if (adminSheetUrl) {
+      window.open(adminSheetUrl, '_blank', 'noopener');
+      return;
+    }
+    adminSecretInput.value = '';
+    adminDialogError.textContent = '';
+    adminDialog.showModal();
+    adminSecretInput.focus();
+  });
+
+  document.getElementById('adminCancelBtn').addEventListener('click', () => adminDialog.close());
+  adminDialog.addEventListener('click', e => { if (e.target === adminDialog) adminDialog.close(); });
+  adminSecretInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitAdminAccess(); });
+  adminSubmitBtn.addEventListener('click', submitAdminAccess);
+
+  async function submitAdminAccess() {
+    const adminSecret = adminSecretInput.value;
+    if (!adminSecret) {
+      adminDialogError.textContent = 'Enter the admin password.';
+      return;
+    }
+
+    adminSubmitBtn.disabled = true;
+    const original = adminSubmitBtn.textContent;
+    adminSubmitBtn.textContent = 'Checking…';
+    adminDialogError.textContent = '';
+
+    try {
+      const data = await post({...authPayload('verifyAdmin'), adminSecret});
+      adminSheetUrl = data.sheetUrl;
+      adminAccessBtn.textContent = '📊 Open Audit Log';
+      adminDialog.close();
+      window.open(adminSheetUrl, '_blank', 'noopener');
+    } catch (err) {
+      adminDialogError.textContent = err.message || 'Could not verify admin password.';
+    } finally {
+      adminSubmitBtn.disabled = false;
+      adminSubmitBtn.textContent = original;
+    }
   }
 
   // ------------------------------------------------------------------
@@ -546,7 +622,7 @@
         await audioContext.resume();
       } catch (_) {}
       showAudienceLink();
-      showSheetLink();
+      resetAdminAccess();
       pollGen++;
       await refreshFeed();
     } catch (err) {
@@ -649,7 +725,7 @@
     setConnection('Locked');
     document.getElementById('headerInfo').hidden = true;
     document.getElementById('setupDetails').open = false;
-    document.getElementById('sheetLink').removeAttribute('href');
+    resetAdminAccess();
     document.getElementById('audienceLink').value = '';
     eventTitleInput.value = '';
     secretInput.value = '';
