@@ -5,14 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>eHapot · Moderator</title>
   <script src="config.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
   <style>
     :root{--navy:#0A2B4E;--blue:#1D5C9B;--gold:#D4A017;--lg:#F5C842;--bg:#F4F7FC;--white:#fff;--green:#2E7D32;--red:#C62828}
     *{box-sizing:border-box}
     body{margin:0;background:var(--bg);font-family:"Segoe UI",system-ui,sans-serif;color:#26364a}
-    header{background:var(--navy);color:#fff;padding:16px 22px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
-    .brand{font-size:1.7rem;font-weight:800}.brand span{color:var(--gold)}
+    header{background:var(--navy);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+    .brand{font-size:1.5rem;font-weight:800}.brand span{color:var(--gold)}
+    .header-info{font-size:.82rem;color:rgba(255,255,255,.75)}
+    .header-info b{color:var(--lg);font-weight:700}
     .conn{font-size:.85rem}.conn b{color:var(--lg)}
-    main{padding:20px;width:min(1500px,100%);margin:auto}
+    main{padding:16px 20px 20px;width:min(1500px,100%);margin:auto}
     .login{width:min(520px,100%);margin:40px auto;background:#fff;border-radius:24px;padding:28px;box-shadow:0 18px 55px rgba(10,43,78,.15);border-top:6px solid var(--gold)}
     label{display:block;font-weight:750;color:var(--navy);margin:14px 0 7px}
     input{width:100%;border:2px solid #cbd5e1;border-radius:12px;padding:12px;font:inherit}
@@ -20,14 +25,15 @@
     button{border:0;border-radius:11px;padding:10px 13px;font-weight:750;cursor:pointer}
     .primary{background:var(--blue);color:#fff;width:100%;margin-top:18px;padding:13px}.primary:hover{background:var(--navy)}
     .error{color:var(--red);min-height:20px;margin-top:10px}
-    .toolbar{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
-    .toolbar .info{font-weight:700;color:var(--navy)}
-    .toolbar-actions{display:flex;gap:8px}
     .secondary{background:#fff;color:var(--navy);border:1px solid #cbd5e1}
+    .secondary:hover{background:#eef2f7}
     .dashboard{display:none}
     .columns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
-    .column{background:#fff;border-radius:20px;padding:16px;min-height:420px;box-shadow:0 10px 30px rgba(10,43,78,.08)}
-    .column h2{margin:0 0 14px;color:var(--navy);display:flex;justify-content:space-between;align-items:center;font-size:1.1rem}
+    .column{background:#fff;border-radius:20px;padding:16px;box-shadow:0 10px 30px rgba(10,43,78,.08);
+      display:flex;flex-direction:column;min-height:260px;max-height:calc(100vh - 250px)}
+    .column h2{margin:0 0 12px;color:var(--navy);display:flex;justify-content:space-between;align-items:center;
+      font-size:1.05rem;flex:0 0 auto}
+    .column-scroll{flex:1;overflow-y:auto;min-height:0}
     .count{background:var(--navy);color:#fff;border-radius:999px;padding:2px 9px;font-size:.78rem}
     .question-card{border:1px solid #dbe3ec;border-left:5px solid var(--blue);border-radius:13px;padding:12px;margin-bottom:10px}
     .question-card p{margin:0 0 8px;line-height:1.4;overflow-wrap:anywhere}
@@ -37,8 +43,7 @@
     .air{background:var(--gold);color:var(--navy)}.complete{background:var(--navy);color:#fff}
     button:disabled{opacity:.5;cursor:not-allowed}
     .empty{color:#98a2b3;text-align:center;padding:35px 6px}
-    .side{display:flex;gap:10px;align-items:center}
-    .audience-card{background:#fff;border-radius:18px;padding:14px 18px;margin-bottom:16px;
+    .audience-card{background:#fff;border-radius:18px;padding:14px 18px;
       box-shadow:0 6px 20px rgba(10,43,78,.06);border:1px solid #eef1f5}
     .audience-card-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:10px}
     .audience-card-label{font-weight:800;color:var(--navy);font-size:.95rem}
@@ -54,18 +59,41 @@
     .icon-btn.copied{background:#eaf6ed;color:var(--green);border-color:#bfe3c7}
     .hint{font-size:.8rem;color:#667085;margin-top:10px}
     .title-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border-radius:16px;
-      padding:12px 16px;margin-bottom:16px;box-shadow:0 6px 20px rgba(10,43,78,.06)}
+      padding:14px 18px;box-shadow:0 6px 20px rgba(10,43,78,.06);border:1px solid #eef1f5}
     .title-bar label{margin:0;white-space:nowrap;font-weight:750;color:var(--navy)}
-    .title-bar input{flex:1;min-width:220px;border:2px solid #cbd5e1;border-radius:11px;padding:9px 12px;font:inherit}
+    .title-bar input{flex:1;min-width:180px;border:2px solid #cbd5e1;border-radius:11px;padding:9px 12px;font:inherit}
     #titleStatus{font-size:.8rem;min-width:76px}
     #titleStatus.success{color:var(--green)}
     #titleStatus.error{color:var(--red)}
-    @media(max-width:950px){.columns{grid-template-columns:1fr}.side{display:none}}
+
+    /* Collapsible event-setup panel (v2.4.1): keeps the title/link config
+       out of the way once an event is configured, so the kanban board gets
+       the bulk of the viewport instead of three stacked config bars. */
+    .setup-details{margin-bottom:14px}
+    .setup-details summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;
+      background:#fff;border-radius:14px;padding:11px 18px;box-shadow:0 4px 14px rgba(10,43,78,.06);
+      user-select:none}
+    .setup-details summary::-webkit-details-marker{display:none}
+    .setup-summary-icon{flex:0 0 auto}
+    .setup-summary-text{flex:1;font-size:.86rem;color:#4b5768;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .setup-summary-text strong{color:var(--navy)}
+    .chevron{flex:0 0 auto;color:#98a2b3;transition:transform .2s ease}
+    .setup-details[open] .chevron{transform:rotate(180deg)}
+    .setup-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+
+    .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+    .toolbar input[type="search"]{flex:1;min-width:180px;border:2px solid #cbd5e1;border-radius:11px;
+      padding:9px 12px;font:inherit}
+    #sheetLink{text-decoration:none;padding:9px 14px;border-radius:11px;display:inline-flex;align-items:center}
+
+    @media(max-width:950px){.columns{grid-template-columns:1fr}.column{max-height:none}.header-info{display:none}}
+    @media(max-width:900px){.setup-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
 <header>
   <div class="brand">🎙️ <span>e</span>Hapot Moderator</div>
+  <div class="header-info" id="headerInfo" hidden><b id="moderatorLabel"></b> · Event <b id="eventLabel"></b></div>
   <div class="conn">Status: <b id="connText">Locked</b></div>
 </header>
 
@@ -87,67 +115,70 @@
   </section>
 
   <section id="dashboard" class="dashboard">
-    <div class="title-bar">
-      <label for="eventTitleInput">🏷️ Event Title</label>
-      <input id="eventTitleInput" type="text" maxlength="120"
-             placeholder="Shown on the projector screen — e.g. BISCAST Freshman Orientation 2026">
-      <button id="saveTitleBtn" class="secondary" type="button">Save</button>
-      <span id="titleStatus" aria-live="polite"></span>
-    </div>
+    <details id="setupDetails" class="setup-details">
+      <summary>
+        <span class="setup-summary-icon" aria-hidden="true">⚙️</span>
+        <span class="setup-summary-text">Event Setup — <strong id="setupSummaryTitle">Untitled event</strong> · PIN <span id="setupSummaryPin"></span></span>
+        <span class="chevron" aria-hidden="true">▾</span>
+      </summary>
 
-    <div class="audience-card">
-      <div class="audience-card-head">
-        <span class="audience-card-label">🔗 Audience Entry Link</span>
-        <span class="audience-card-hint">Share this so attendees can submit questions</span>
+      <div class="setup-grid">
+        <div class="title-bar">
+          <label for="eventTitleInput">🏷️ Event Title</label>
+          <input id="eventTitleInput" type="text" maxlength="120"
+                 placeholder="Shown on the projector — e.g. BISCAST Freshman Orientation 2026">
+          <button id="saveTitleBtn" class="secondary" type="button">Save</button>
+          <span id="titleStatus" aria-live="polite"></span>
+        </div>
+
+        <div class="audience-card">
+          <div class="audience-card-head">
+            <span class="audience-card-label">🔗 Audience Entry Link</span>
+            <span class="audience-card-hint">Share this so attendees can submit questions</span>
+          </div>
+          <div class="audience-card-row">
+            <input id="audienceLink" class="audience-link-field" type="text" readonly
+                   aria-label="Audience entry URL — click to select, then copy">
+            <button id="openAudienceBtn" class="icon-btn" type="button" title="Open in a new tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <path d="M15 3h6v6"/>
+                <path d="M10 14 21 3"/>
+              </svg>
+              <span>Open</span>
+            </button>
+            <button id="copyAudienceBtn" class="icon-btn" type="button" title="Copy link to clipboard">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              <span id="copyBtnLabel">Copy Link</span>
+            </button>
+          </div>
+        </div>
       </div>
-      <div class="audience-card-row">
-        <input id="audienceLink" class="audience-link-field" type="text" readonly
-               aria-label="Audience entry URL — click to select, then copy">
-        <button id="openAudienceBtn" class="icon-btn" type="button" title="Open in a new tab">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-            <path d="M15 3h6v6"/>
-            <path d="M10 14 21 3"/>
-          </svg>
-          <span>Open</span>
-        </button>
-        <button id="copyAudienceBtn" class="icon-btn" type="button" title="Copy link to clipboard">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="9" y="9" width="13" height="13" rx="2"/>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-          </svg>
-          <span id="copyBtnLabel">Copy Link</span>
-        </button>
-      </div>
-    </div>
+    </details>
 
     <div class="toolbar">
-      <div class="info"><span id="moderatorLabel"></span> · Event <span id="eventLabel"></span></div>
-      <div class="side">
-        <a id="sheetLink" class="secondary" style="text-decoration:none;padding:9px 12px;border-radius:11px;display:inline-block"
-           target="_blank" rel="noopener noreferrer">📊 Audit Log</a>
-      </div>
-      <div class="toolbar-actions">
-        <input id="searchBox" type="search" placeholder="Filter by text or name…" autocomplete="off"
-               style="border:2px solid #cbd5e1;border-radius:11px;padding:9px 12px;font:inherit;min-width:220px">
-        <button id="exportBtn" class="secondary" type="button">Export CSV</button>
-        <button id="refreshBtn" class="secondary" type="button">Refresh</button>
-        <button id="logoutBtn" class="secondary" type="button">Lock</button>
-      </div>
+      <input id="searchBox" type="search" placeholder="Filter by text or name…" autocomplete="off">
+      <a id="sheetLink" class="secondary" target="_blank" rel="noopener noreferrer">📊 Audit Log</a>
+      <button id="exportBtn" class="secondary" type="button">📄 Export PDF Report</button>
+      <button id="refreshBtn" class="secondary" type="button">Refresh</button>
+      <button id="logoutBtn" class="secondary" type="button">Lock</button>
     </div>
 
     <div class="columns">
       <section class="column" aria-labelledby="pendingTitle">
         <h2 id="pendingTitle">Pending <span id="pendingCount" class="count">0</span></h2>
-        <div id="pendingList"></div>
+        <div id="pendingList" class="column-scroll"></div>
       </section>
       <section class="column" aria-labelledby="deckTitle">
         <h2 id="deckTitle">On Deck <span id="deckCount" class="count">0</span></h2>
-        <div id="deckList"></div>
+        <div id="deckList" class="column-scroll"></div>
       </section>
       <section class="column" aria-labelledby="airTitle">
         <h2 id="airTitle">On Air <span id="airCount" class="count">0</span></h2>
-        <div id="airList"></div>
+        <div id="airList" class="column-scroll"></div>
       </section>
     </div>
   </section>
@@ -282,11 +313,20 @@
   const eventTitleInput = document.getElementById('eventTitleInput');
   const saveTitleBtn = document.getElementById('saveTitleBtn');
   const titleStatus = document.getElementById('titleStatus');
+  const setupSummaryTitle = document.getElementById('setupSummaryTitle');
+  const setupSummaryPin = document.getElementById('setupSummaryPin');
+
+  function updateSetupSummary() {
+    const title = eventTitleInput.value.trim();
+    setupSummaryTitle.textContent = title || 'Untitled event';
+    setupSummaryPin.textContent = eventPin || '----';
+  }
 
   function applyEventTitle(title) {
     if (typeof title !== 'string') return;
     if (document.activeElement === eventTitleInput) return; // don't clobber while the moderator is typing
     eventTitleInput.value = title;
+    updateSetupSummary();
   }
 
   async function saveEventTitle() {
@@ -301,6 +341,7 @@
       eventTitleInput.value = typeof data.eventTitle === 'string' ? data.eventTitle : title;
       titleStatus.textContent = 'Saved ✓';
       titleStatus.className = 'success';
+      updateSetupSummary();
     } catch (err) {
       titleStatus.textContent = err.message || 'Could not save title.';
       titleStatus.className = 'error';
@@ -496,6 +537,8 @@
       dashboard.style.display = 'block';
       document.getElementById('moderatorLabel').textContent = moderatorName;
       document.getElementById('eventLabel').textContent = eventPin;
+      document.getElementById('headerInfo').hidden = false;
+      updateSetupSummary();
       secretInput.value = '';
       previousPendingCount = -1;
       try {
@@ -515,22 +558,78 @@
     }
   }
 
-  async function exportCsv() {
+  function csvToRows(csvText) {
+    const parsed = Papa.parse(csvText.trim(), { skipEmptyLines: true });
+    return parsed.data; // [ [header...], [row...], ... ]
+  }
+
+  function downloadCsvFallback(csvText) {
+    const blob = new Blob([csvText], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `eHapot_${eventPin}_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function buildPdfReport(csvText) {
+    const rows = csvToRows(csvText);
+    const header = rows[0] || [];
+    const body = rows.slice(1);
+    const title = eventTitleInput.value.trim() || `Event ${eventPin}`;
+
+    const doc = new jspdf.jsPDF({ orientation: 'landscape' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    doc.setFontSize(18);
+    doc.setTextColor(10, 43, 78); // navy
+    doc.text('eHapot Q&A Report', 40, 42);
+
+    doc.setFontSize(11);
+    doc.setTextColor(90, 100, 115);
+    doc.text(title, 40, 60);
+    doc.text(
+      `Event PIN ${eventPin} · Generated ${new Date().toLocaleString()} · ${body.length} question${body.length === 1 ? '' : 's'}`,
+      40, 76
+    );
+
+    doc.autoTable({
+      head: [header],
+      body: body,
+      startY: 92,
+      margin: { left: 40, right: 40 },
+      styles: { fontSize: 8.5, cellPadding: 5, overflow: 'linebreak' },
+      headStyles: { fillColor: [10, 43, 78], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [244, 247, 252] },
+      columnStyles: { 3: { cellWidth: pageWidth * 0.28 } } // Question column gets extra room
+    });
+
+    doc.save(`eHapot_${eventPin}_${new Date().toISOString().slice(0,10)}.pdf`);
+  }
+
+  async function exportReport() {
     const btn = document.getElementById('exportBtn');
     btn.disabled = true;
     const originalText = btn.textContent;
     btn.textContent = 'Exporting…';
     try {
       const data = await post(authPayload('exportEventCsv'));
-      const blob = new Blob([data.csv], {type:'text/csv;charset=utf-8;'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `eHapot_${eventPin}_${new Date().toISOString().slice(0,10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+
+      const pdfLibsReady =
+        typeof jspdf !== 'undefined' &&
+        typeof jspdf.jsPDF === 'function' &&
+        typeof Papa !== 'undefined';
+
+      if (pdfLibsReady) {
+        buildPdfReport(data.csv);
+      } else {
+        // Graceful degrade: same data, just not the polished PDF layout.
+        console.warn('[eHapot moderator] PDF libraries unavailable, falling back to CSV.');
+        downloadCsvFallback(data.csv);
+      }
     } catch (err) {
       alert(err.message);
     } finally {
@@ -548,6 +647,8 @@
     dashboard.style.display = 'none';
     loginPanel.style.display = 'block';
     setConnection('Locked');
+    document.getElementById('headerInfo').hidden = true;
+    document.getElementById('setupDetails').open = false;
     document.getElementById('sheetLink').removeAttribute('href');
     document.getElementById('audienceLink').value = '';
     eventTitleInput.value = '';
@@ -560,7 +661,7 @@
   document.getElementById('loginBtn').addEventListener('click', login);
   secretInput.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
   document.getElementById('refreshBtn').addEventListener('click', () => refreshFeed(false));
-  document.getElementById('exportBtn').addEventListener('click', exportCsv);
+  document.getElementById('exportBtn').addEventListener('click', exportReport);
   document.getElementById('logoutBtn').addEventListener('click', logout);
   document.getElementById('searchBox').addEventListener('input', e => {
     searchTerm = e.target.value.trim().toLowerCase();
