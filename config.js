@@ -1,19 +1,21 @@
 // ================================================================
 // eHapot - Shared Configuration
-// Version: 2.4.0 Hardened
+// Version: 2.4.1 Hardened
 // No secrets belong in this file.
 // ================================================================
 'use strict';
 
 const CONFIG = Object.freeze({
   APP_NAME: 'eHapot',
-  VERSION: '2.4.0',
+  VERSION: '2.4.1',
 
   // Google Apps Script Web App
   ENDPOINT: 'https://script.google.com/macros/s/AKfycbwBxCzLRBd1inBCwXuekBoVQDcnW6_XOZaPoas3pu-LZgsJV2Ql6IUwcjag5Oq4fvyVTA/exec',
 
-  // Administrative reference only
-  SHEET_URL: 'https://docs.google.com/spreadsheets/d/1mq64Mm6_WXSiSv0I_XnSIMQwY8NAj3l51yfJ-CMSdHE/edit',
+  // v2.4.1: the raw Sheet URL is no longer stored here. Holding
+  // MODERATOR_SECRET used to be enough to reach it via this file; now it's
+  // only ever returned by the backend's 'verifyAdmin' action, gated behind
+  // the separate ADMIN_SECRET. See moderator.html's Admin Access flow.
 
   PROJECTOR_POLL_INTERVAL: 3000,
   PROJECTOR_HIDDEN_POLL_INTERVAL: 30000,
