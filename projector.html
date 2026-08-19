@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eHapot · Projector</title>
+  <script src="config.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    :root{--navy:#0A2B4E;--blue:#1D5C9B;--gold:#D4A017;--lg:#F5C842;--white:#fff}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--navy);min-height:100vh;display:flex;align-items:center;justify-content:center;
+      padding:32px 24px;color:#fff;font-family:"Segoe UI",system-ui,sans-serif}
+    .container{width:min(1200px,100%);text-align:center}
+    .header{border-bottom:2px solid var(--gold);padding-bottom:18px;margin-bottom:32px;text-align:center}
+    .event-title{font-size:clamp(2rem,4.5vw,3.8rem);font-weight:800;letter-spacing:1px;color:#fff;overflow-wrap:anywhere}
+    .brand-footer{margin-top:30px;text-align:center;font-size:.78rem;letter-spacing:.5px;color:rgba(255,255,255,.38)}
+    .brand-footer span{color:rgba(212,160,23,.75)}
+    .footer-logo{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
+      background:#fff;border-radius:50%;overflow:hidden;vertical-align:middle;margin-right:8px;
+      box-shadow:0 1px 5px rgba(0,0,0,.3)}
+    .footer-logo img{width:100%;height:100%;object-fit:cover}
+    .on-air{background:#fff;color:var(--navy);padding:48px 32px;border-radius:36px;border:4px solid var(--gold);
+      min-height:280px;display:flex;flex-direction:column;justify-content:center;
+      box-shadow:0 20px 60px rgba(0,0,0,.35);animation:pulse 2.4s infinite ease-in-out}
+    @keyframes pulse{50%{border-color:var(--lg);box-shadow:0 0 40px 12px rgba(212,160,23,.22)}}
+    .label{text-transform:uppercase;letter-spacing:6px;color:var(--gold);font-weight:800}
+    .question{font-size:clamp(3rem,8vw,8rem);font-weight:800;line-height:1.15;overflow-wrap:anywhere;margin-top:12px}
+    .question.empty{font-size:clamp(2rem,4vw,4rem);font-weight:300;color:#9aa0a8}
+    .meta{margin-top:24px;font-size:clamp(1rem,2vw,1.6rem);color:#606b78}
+    .highlight{color:var(--blue);font-weight:700}
+    .deck{margin-top:30px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);
+      border-radius:26px;padding:22px 26px;text-align:left}
+    .deck h2{margin:0 0 14px;color:var(--lg);font-size:1rem;letter-spacing:3px;text-transform:uppercase}
+    .deck-list{display:flex;flex-direction:column;gap:10px;max-height:200px;overflow:auto}
+    .deck-item{display:flex;gap:12px;align-items:center;background:rgba(255,255,255,.06);border-left:4px solid var(--blue);
+      border-radius:12px;padding:12px 16px;font-size:1.2rem}
+    .dot{width:10px;height:10px;border-radius:50%;background:#4CAF50;flex:0 0 auto}
+    .d-text{flex:1}.d-meta{font-size:.8rem;color:#b3bbc7}
+    .deck-empty{color:rgba(255,255,255,.45);text-align:center;padding:16px}
+    .status{position:fixed;right:18px;bottom:12px;font-size:.75rem;color:rgba(255,255,255,.6)}
+    .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#F5C842}
+    .status-dot.online{background:#4CAF50}.status-dot.offline{background:#e53935}
+    .fatal{background:#fff3f3;color:#8a1c1c;border:3px solid #c62828;padding:24px;border-radius:20px;font-size:1.2rem}
+
+    .controls{position:fixed;top:16px;right:18px;display:flex;gap:10px;z-index:20;
+      opacity:1;transition:opacity .5s ease}
+    .controls.idle{opacity:.08}
+    .controls.idle:hover{opacity:1}
+    .ctrl-btn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;
+      border-radius:14px;padding:10px 16px;font-size:.95rem;font-weight:700;cursor:pointer;
+      backdrop-filter:blur(6px);display:flex;align-items:center;gap:8px}
+    .ctrl-btn:hover{background:rgba(255,255,255,.22)}
+    .ctrl-btn:focus-visible{outline:3px solid var(--lg);outline-offset:2px}
+
+    dialog{border:0;border-radius:24px;padding:0;box-shadow:0 30px 90px rgba(0,0,0,.5);width:min(420px,90vw)}
+    dialog::backdrop{background:rgba(10,43,78,.75)}
+    .modal{padding:28px;text-align:center;background:#fff;color:var(--navy);border-radius:24px}
+    #qrCanvas{display:flex;justify-content:center;margin:18px auto}
+    .modal-actions{display:flex;gap:10px;justify-content:center;margin-top:18px}
+    .modal-actions button{border:0;border-radius:14px;padding:11px 20px;background:var(--blue);color:#fff;font-weight:700;cursor:pointer}
+    .modal-actions button:hover{background:var(--navy)}
+
+    .qr-corner{position:fixed;left:18px;bottom:12px;z-index:15;background:#fff;color:var(--navy);
+      border-radius:18px;padding:12px 12px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;
+      box-shadow:0 12px 34px rgba(0,0,0,.4);cursor:pointer;border:3px solid var(--gold)}
+    .qr-corner[hidden]{display:none}
+    .qr-corner canvas,.qr-corner img{display:block;width:112px;height:112px}
+    .qr-corner-label{font-size:.72rem;font-weight:800;letter-spacing:.3px;text-align:center;line-height:1.3}
+    .qr-corner-label span{color:var(--blue)}
+    @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+  </style>
+</head>
+<body>
+<main class="container">
+  <div class="header">
+    <div id="eventTitleDisplay" class="event-title">Live Q&amp;A</div>
+  </div>
+
+  <section class="on-air" aria-live="polite" aria-atomic="true">
+    <div class="label">📢 Now Answering</div>
+    <div id="onAirText" class="question empty">💡 Connecting…</div>
+    <div id="onAirMeta" class="meta">Connecting to eHapot</div>
+  </section>
+
+  <section class="deck" aria-labelledby="deckHeading">
+    <h2 id="deckHeading">⏳ Up Next (On Deck)</h2>
+    <div id="deckList" class="deck-list"><div class="deck-empty">Loading queue…</div></div>
+  </section>
+
+  <footer class="brand-footer">
+    <span class="footer-logo" id="footerLogoWrap" hidden><img id="footerLogo" alt=""></span>
+    🎤 <span>e</span>Hapot Q&amp;A · v<span id="version"></span>
+  </footer>
+</main>
+
+<div class="status" aria-live="polite"><span id="statusDot" class="status-dot"></span><span id="statusText">Connecting…</span></div>
+
+<div class="controls" id="controls">
+  <button id="qrToggleBtn" class="ctrl-btn" type="button" title="Show a QR code onscreen for the audience" aria-pressed="false">📲 Show QR</button>
+  <button id="fsToggleBtn" class="ctrl-btn" type="button" title="Toggle kiosk mode (hides address bar and tabs)" aria-pressed="false">🖥️ Kiosk Mode</button>
+</div>
+
+<div class="qr-corner" id="qrCorner" hidden title="Click to enlarge">
+  <div id="qrCornerCanvas" aria-label="QR code for audience entry"></div>
+  <div class="qr-corner-label">📲 Scan to Ask · <span id="qrCornerPin"></span></div>
+</div>
+
+<dialog id="qrDialog" aria-labelledby="qrTitle">
+  <div class="modal">
+    <h2 id="qrTitle">Scan to Ask a Question</h2>
+    <p id="qrUrlText"></p>
+    <div id="qrCanvas" aria-label="QR code for audience entry"></div>
+    <div class="modal-actions">
+      <button id="closeQrBtn" type="button">Close</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+
+  if (typeof CONFIG === 'undefined') {
+    document.body.innerHTML = '<main style="font-family:system-ui;padding:2rem"><h1>eHapot configuration error</h1><p>config.js could not be loaded.</p></main>';
+    throw new Error('CONFIG is not defined');
+  }
+
+  const onAirText = document.getElementById('onAirText');
+  const onAirMeta = document.getElementById('onAirMeta');
+  const deckList = document.getElementById('deckList');
+  const eventTitleDisplay = document.getElementById('eventTitleDisplay');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+
+  const pinRegex = new RegExp(CONFIG.EVENT_PIN_PATTERN);
+  const eventPin = (new URLSearchParams(location.search).get('pin') || '').toUpperCase();
+  let timer = null;
+  let pollGen = 0; // v2.4.0: guards against overlapping poll cycles clobbering each other's timers
+  let stopped = false;
+
+  document.getElementById('version').textContent = CONFIG.VERSION;
+
+  const DEFAULT_EVENT_TITLE = 'Live Q&A';
+  function renderEventTitle(title) {
+    eventTitleDisplay.textContent = (typeof title === 'string' && title.trim()) ? title.trim() : DEFAULT_EVENT_TITLE;
+  }
+  renderEventTitle(null); // shows the default immediately, before the first poll resolves
+
+  // Applied once, not re-fetched every poll tick — the logo doesn't change
+  // mid-event, so there's no reason to re-request the image every 3s.
+  const footerLogoWrap = document.getElementById('footerLogoWrap');
+  const footerLogo = document.getElementById('footerLogo');
+  let logoApplied = false;
+  function renderLogo(url) {
+    if (logoApplied || typeof url !== 'string' || !url.trim()) return;
+    logoApplied = true;
+    footerLogo.onload = () => { footerLogoWrap.hidden = false; };
+    footerLogo.onerror = () => { footerLogoWrap.hidden = true; };
+    footerLogo.src = url.trim();
+  }
+
+  function setStatus(mode, text) {
+    statusDot.className = 'status-dot' + (mode ? ` ${mode}` : '');
+    statusText.textContent = text;
+  }
+
+  function fatal(message) {
+    stopped = true;
+    pollGen++;
+    clearTimeout(timer);
+    document.querySelector('.on-air').className = 'fatal';
+    document.querySelector('.on-air').replaceChildren(document.createTextNode(message));
+    document.querySelector('.deck').hidden = true;
+    setStatus('offline', 'Configuration error');
+  }
+
+  function requestUrl() {
+    const url = new URL(CONFIG.ENDPOINT);
+    url.searchParams.set('action', 'getProjectorFeed');
+    url.searchParams.set('pin', eventPin);
+    url.searchParams.set('_', Date.now().toString());
+    return url.href;
+  }
+
+  async function fetchJsonWithTimeout(url) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
+    try {
+      const res = await fetch(url, {method:'GET', cache:'no-store', signal:controller.signal});
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data || data.ok !== true) throw new Error(data?.error || 'Invalid backend response');
+      return data;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  function formatTime(value) {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  }
+
+  function renderOnAir(q) {
+    if (!q) {
+      onAirText.textContent = '💡 No live question';
+      onAirText.className = 'question empty';
+      onAirMeta.textContent = 'Waiting for the moderator to send a question to the screen';
+      return;
+    }
+
+    onAirText.textContent = String(q.text || '');
+    onAirText.className = 'question';
+
+    onAirMeta.replaceChildren();
+    onAirMeta.append(document.createTextNode('Asked by: '));
+    const who = document.createElement('span');
+    who.className = 'highlight';
+    who.textContent = q.submittedBy || 'Anonymous';
+    onAirMeta.append(who);
+
+    const t = formatTime(q.timestamp);
+    if (t) onAirMeta.append(document.createTextNode(` · ${t}`));
+  }
+
+  function renderDeck(items) {
+    deckList.replaceChildren();
+    if (!Array.isArray(items) || items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'deck-empty';
+      empty.textContent = '📭 No questions queued';
+      deckList.append(empty);
+      return;
+    }
+
+    for (const q of items) {
+      const row = document.createElement('div');
+      row.className = 'deck-item';
+
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.setAttribute('aria-hidden','true');
+
+      const text = document.createElement('span');
+      text.className = 'd-text';
+      text.textContent = q.text || '';
+
+      const meta = document.createElement('span');
+      meta.className = 'd-meta';
+      meta.textContent = `— ${q.submittedBy || 'Anonymous'}`;
+
+      row.append(dot, text, meta);
+      deckList.append(row);
+    }
+  }
+
+  function nextInterval() {
+    return document.hidden ? CONFIG.PROJECTOR_HIDDEN_POLL_INTERVAL : CONFIG.PROJECTOR_POLL_INTERVAL;
+  }
+
+  function schedulePoll(delay) {
+    clearTimeout(timer);
+    const myGen = pollGen;
+    timer = setTimeout(() => {
+      if (myGen === pollGen) poll();
+    }, delay);
+  }
+
+  async function poll() {
+    if (stopped) return;
+    // Snapshot the generation before awaiting the network call. If a
+    // visibilitychange (or other trigger) bumps pollGen and schedules its
+    // own poll while this request is still in flight, this response is
+    // stale and must not reschedule — otherwise two independent timer
+    // chains can end up running concurrently.
+    const myGen = pollGen;
+    try {
+      const data = await fetchJsonWithTimeout(requestUrl());
+      if (myGen !== pollGen) return;
+      renderOnAir(data.onAir || null);
+      renderDeck(data.onDeck || []);
+      renderEventTitle(data.eventTitle);
+      renderLogo(data.logoUrl);
+      setStatus('online','Live');
+    } catch (err) {
+      if (myGen !== pollGen) return;
+      console.error('[eHapot projector]', err);
+      setStatus('offline', navigator.onLine ? 'Reconnecting…' : 'Offline');
+      // Preserve last known content.
+    } finally {
+      if (myGen === pollGen && !stopped) schedulePoll(nextInterval());
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // QR code (v2.4.0): a persistent corner overlay so the audience can
+  // scan continuously, plus an enlarge-on-click modal for when someone
+  // in the back needs a bigger code.
+  // ------------------------------------------------------------------
+  const qrDialog = document.getElementById('qrDialog');
+  const qrCanvas = document.getElementById('qrCanvas');
+  const qrUrlText = document.getElementById('qrUrlText');
+  const qrToggleBtn = document.getElementById('qrToggleBtn');
+  const qrCorner = document.getElementById('qrCorner');
+  const qrCornerCanvas = document.getElementById('qrCornerCanvas');
+  const qrCornerPin = document.getElementById('qrCornerPin');
+  let qrCornerRendered = false;
+
+  function submitUrl() {
+    const url = new URL('submit.html', window.location.href);
+    url.searchParams.set('pin', eventPin);
+    return url.href;
+  }
+
+  function renderQrInto(container, size) {
+    container.replaceChildren();
+    if (typeof QRCode === 'undefined') {
+      container.textContent = 'QR library could not be loaded.';
+      return;
+    }
+    new QRCode(container, {
+      text: submitUrl(),
+      width: size,
+      height: size,
+      colorDark: '#0A2B4E',
+      colorLight: '#FFFFFF',
+      correctLevel: QRCode.CorrectLevel.H
+    });
+  }
+
+  function showQrModal() {
+    qrUrlText.textContent = `Event ${eventPin}`;
+    renderQrInto(qrCanvas, 260);
+    qrDialog.showModal();
+  }
+
+  function setQrCornerVisible(visible) {
+    qrCorner.hidden = !visible;
+    qrToggleBtn.textContent = visible ? '❌ Hide QR' : '📲 Show QR';
+    qrToggleBtn.setAttribute('aria-pressed', String(visible));
+    if (visible && !qrCornerRendered) {
+      qrCornerPin.textContent = eventPin;
+      renderQrInto(qrCornerCanvas, 112);
+      qrCornerRendered = true;
+    }
+  }
+
+  qrToggleBtn.addEventListener('click', () => setQrCornerVisible(qrCorner.hidden));
+  qrCorner.addEventListener('click', showQrModal);
+  document.getElementById('closeQrBtn').addEventListener('click', () => qrDialog.close());
+  qrDialog.addEventListener('click', e => { if (e.target === qrDialog) qrDialog.close(); });
+
+  // ------------------------------------------------------------------
+  // Kiosk mode (v2.4.0): uses the Fullscreen API so the browser hides
+  // its address bar / tab strip. Must be triggered by a user gesture —
+  // browsers block requestFullscreen() called automatically on load.
+  // This is the closest a webpage can get to real kiosk mode; a fully
+  // locked-down kiosk (no Esc-to-exit) requires launching the browser
+  // itself with a kiosk flag, e.g. `chrome --kiosk <projector URL>`.
+  // ------------------------------------------------------------------
+  const fsToggleBtn = document.getElementById('fsToggleBtn');
+
+  function isFullscreen() {
+    return !!document.fullscreenElement;
+  }
+
+  async function toggleKioskMode() {
+    try {
+      if (!isFullscreen()) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch (err) {
+      console.error('[eHapot projector] kiosk mode unavailable', err);
+    }
+  }
+
+  function updateFsButton() {
+    const on = isFullscreen();
+    fsToggleBtn.textContent = on ? '🡼 Exit Kiosk Mode' : '🖥️ Kiosk Mode';
+    fsToggleBtn.setAttribute('aria-pressed', String(on));
+  }
+
+  fsToggleBtn.addEventListener('click', toggleKioskMode);
+  document.addEventListener('fullscreenchange', updateFsButton);
+
+  // Keyboard shortcuts: handy once the mouse cursor is hidden in kiosk mode.
+  document.addEventListener('keydown', e => {
+    if (e.target && ['INPUT','TEXTAREA'].includes(e.target.tagName)) return;
+    if (e.key.toLowerCase() === 'k') toggleKioskMode();
+    if (e.key.toLowerCase() === 'q') setQrCornerVisible(qrCorner.hidden);
+  });
+
+  // ------------------------------------------------------------------
+  // Idle fade (v2.4.0): once in kiosk mode, fade the presenter controls
+  // out after a few seconds of no mouse movement so they don't sit on
+  // top of the question; a nudge of the mouse brings them back. The
+  // audience-facing QR corner is intentionally excluded so it stays
+  // scannable the whole time.
+  // ------------------------------------------------------------------
+  const controls = document.getElementById('controls');
+  let idleTimer = null;
+
+  function resetIdleTimer() {
+    controls.classList.remove('idle');
+    clearTimeout(idleTimer);
+    if (isFullscreen()) idleTimer = setTimeout(() => controls.classList.add('idle'), 3000);
+  }
+
+  document.addEventListener('mousemove', resetIdleTimer);
+  document.addEventListener('fullscreenchange', resetIdleTimer);
+
+  if (!CONFIG || !CONFIG.ENDPOINT) fatal('eHapot configuration is unavailable.');
+  else if (!pinRegex.test(eventPin)) fatal('Invalid or missing event code. Open this projector from the eHapot launchpad.');
+  else {
+    document.addEventListener('visibilitychange', () => {
+      pollGen++;
+      schedulePoll(document.hidden ? nextInterval() : 0);
+    });
+    window.addEventListener('online', () => { pollGen++; schedulePoll(0); });
+    window.addEventListener('offline', () => setStatus('offline','Offline'));
+    poll();
+  }
+})();
+</script>
+</body>
+</html>
