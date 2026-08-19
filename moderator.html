@@ -166,6 +166,16 @@
           </div>
         </div>
       </div>
+
+      <div class="title-bar" id="logoBar" style="margin-top:12px">
+        <label for="logoUrlInput">🏫 Institution Logo</label>
+        <input id="logoUrlInput" type="url" maxlength="300"
+               placeholder="https://jsdelacruzbiscast.github.io/ehapot/assets/biscast-logo.png">
+        <img id="logoPreview" alt="" hidden style="width:28px;height:28px;object-fit:contain;border-radius:6px">
+        <button id="saveLogoBtn" class="secondary" type="button">Save</button>
+        <span id="logoStatus" aria-live="polite"></span>
+      </div>
+      <div class="hint">Applies to every event, not just this one — used on the projector footer and PDF reports. A GitHub-hosted image (same repo as this site) loads fastest and avoids cross-origin issues.</div>
     </details>
 
     <div class="toolbar">
@@ -433,6 +443,65 @@
     if (e.key === 'Enter') { e.preventDefault(); saveEventTitle(); }
   });
 
+  // ------------------------------------------------------------------
+  // Institution Logo (v2.4.2): global, not per-PIN — one save applies to
+  // every event's PDF report / projector branding. Same server round-trip
+  // pattern as Event Title, just posted to a different action.
+  // ------------------------------------------------------------------
+  const logoUrlInput = document.getElementById('logoUrlInput');
+  const logoPreview = document.getElementById('logoPreview');
+  const saveLogoBtn = document.getElementById('saveLogoBtn');
+  const logoStatus = document.getElementById('logoStatus');
+  let currentLogoUrl = '';
+
+  function updateLogoPreview(url) {
+    if (url) {
+      logoPreview.src = url;
+      logoPreview.hidden = false;
+    } else {
+      logoPreview.hidden = true;
+      logoPreview.removeAttribute('src');
+    }
+  }
+  logoPreview.addEventListener('error', () => { logoPreview.hidden = true; });
+
+  function applyInstitutionLogo(url) {
+    if (typeof url !== 'string') return;
+    currentLogoUrl = url;
+    if (document.activeElement === logoUrlInput) return; // don't clobber while typing
+    logoUrlInput.value = url;
+    updateLogoPreview(url);
+  }
+
+  async function saveInstitutionLogo() {
+    const logoUrl = logoUrlInput.value.trim().slice(0, 300);
+    saveLogoBtn.disabled = true;
+    const original = saveLogoBtn.textContent;
+    saveLogoBtn.textContent = 'Saving…';
+    logoStatus.textContent = '';
+    logoStatus.className = '';
+    try {
+      const data = await post({...authPayload('setInstitutionLogo'), logoUrl});
+      currentLogoUrl = typeof data.logoUrl === 'string' ? data.logoUrl : logoUrl;
+      logoUrlInput.value = currentLogoUrl;
+      updateLogoPreview(currentLogoUrl);
+      logoStatus.textContent = 'Saved ✓';
+      logoStatus.className = 'success';
+    } catch (err) {
+      logoStatus.textContent = err.message || 'Could not save logo.';
+      logoStatus.className = 'error';
+    } finally {
+      saveLogoBtn.disabled = false;
+      saveLogoBtn.textContent = original;
+      setTimeout(() => { logoStatus.textContent = ''; logoStatus.className = ''; }, 4000);
+    }
+  }
+
+  saveLogoBtn.addEventListener('click', saveInstitutionLogo);
+  logoUrlInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); saveInstitutionLogo(); }
+  });
+
   function playChime() {
     try {
       if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -481,6 +550,7 @@
   function renderFeed(feed) {
     currentFeed = feed;
     applyEventTitle(feed.eventTitle);
+    applyInstitutionLogo(feed.logoUrl);
     const pending = Array.isArray(feed.pending) ? feed.pending : [];
     const deck = Array.isArray(feed.onDeck) ? feed.onDeck : [];
     const air = feed.onAir || null;
@@ -666,7 +736,44 @@
     URL.revokeObjectURL(url);
   }
 
-  function buildPdfReport(csvText) {
+  // Fetches the institution logo and converts it to a data URL jsPDF can
+  // embed via addImage(). Returns null on any failure (missing URL, network
+  // error, CORS block, unsupported format) so the PDF still generates
+  // cleanly without a logo rather than failing the whole export.
+  async function loadLogoForPdf(url) {
+    if (!url) return null;
+    try {
+      const res = await fetch(url, { mode: 'cors' });
+      if (!res.ok) throw new Error(`logo fetch failed (HTTP ${res.status})`);
+      const blob = await res.blob();
+
+      const format = blob.type.includes('png') ? 'PNG'
+        : (blob.type.includes('jpeg') || blob.type.includes('jpg')) ? 'JPEG'
+        : null;
+      if (!format) throw new Error(`unsupported logo format: ${blob.type || 'unknown'} (use PNG or JPEG)`);
+
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('could not read logo file'));
+        reader.readAsDataURL(blob);
+      });
+
+      const { w, h } = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = () => reject(new Error('could not read logo dimensions'));
+        img.src = dataUrl;
+      });
+
+      return { dataUrl, format, w, h };
+    } catch (err) {
+      console.warn('[eHapot moderator] institution logo unavailable for PDF, continuing without it:', err.message);
+      return null;
+    }
+  }
+
+  async function buildPdfReport(csvText) {
     const rows = csvToRows(csvText);
     const csvHeader = rows[0] || [];
     const csvBody = rows.slice(1);
@@ -692,6 +799,7 @@
 
     const eventName = eventTitleInput.value.trim() || `Event ${eventPin}`;
     const reportDate = new Date().toLocaleString();
+    const logo = await loadLogoForPdf(currentLogoUrl);
 
     const doc = new jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -699,23 +807,38 @@
     const margin = 40;
     const HEAD_Y = 98; // where the table starts below the repeated header block
 
+    // Logo sized to a fixed height, width derived from its own aspect
+    // ratio (capped) so it never stretches or squashes.
+    const LOGO_MAX_H = 34, LOGO_MAX_W = 100;
+    let logoW = 0, logoH = 0;
+    if (logo) {
+      logoH = LOGO_MAX_H;
+      logoW = (logo.w / logo.h) * logoH;
+      if (logoW > LOGO_MAX_W) { logoW = LOGO_MAX_W; logoH = (logo.h / logo.w) * logoW; }
+    }
+    const textX = logo ? margin + logoW + 12 : margin;
+
     function drawHeader() {
-      // App wordmark, top-left.
+      if (logo) {
+        doc.addImage(logo.dataUrl, logo.format, margin, 12, logoW, logoH);
+      }
+
+      // App wordmark, top-left (shifted right of the logo, if present).
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(16);
       doc.setTextColor(10, 43, 78); // navy
-      doc.text('eHapot', margin, 38);
+      doc.text('eHapot', textX, 38);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(140, 148, 163);
-      doc.text('Interactive Q&A Engine · BISCAST SDS', margin, 52);
+      doc.text('Interactive Q&A Engine · BISCAST SDS', textX, 52);
 
       // Event name, second line, left.
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(30, 40, 55);
-      doc.text(`Event: ${eventName}`, margin, 74);
+      doc.text(`Event: ${eventName}`, textX, 74);
 
       // Date + meta, top-right.
       doc.setFont('helvetica', 'normal');
@@ -808,7 +931,7 @@
         typeof Papa !== 'undefined';
 
       if (pdfLibsReady) {
-        buildPdfReport(data.csv);
+        await buildPdfReport(data.csv);
       } else {
         // Graceful degrade: same data, just not the polished PDF layout.
         console.warn('[eHapot moderator] PDF libraries unavailable, falling back to CSV.');
@@ -836,6 +959,9 @@
     resetAdminAccess();
     document.getElementById('audienceLink').value = '';
     eventTitleInput.value = '';
+    logoUrlInput.value = '';
+    currentLogoUrl = '';
+    updateLogoPreview('');
     secretInput.value = '';
     searchTerm = '';
     document.getElementById('searchBox').value = '';
