@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eHapot · Moderator</title>
+  <script src="config.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <style>
+    :root{--navy:#0A2B4E;--blue:#1D5C9B;--gold:#D4A017;--lg:#F5C842;--bg:#F4F7FC;--white:#fff;--green:#2E7D32;--red:#C62828}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);font-family:"Segoe UI",system-ui,sans-serif;color:#26364a}
+    header{background:var(--navy);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+    .brand{font-size:1.5rem;font-weight:800}.brand span{color:var(--gold)}
+    .header-info{font-size:.82rem;color:rgba(255,255,255,.75)}
+    .header-info b{color:var(--lg);font-weight:700}
+    .conn{font-size:.85rem}.conn b{color:var(--lg)}
+    main{padding:16px 20px 20px;width:min(1500px,100%);margin:auto}
+    .login{width:min(520px,100%);margin:40px auto;background:#fff;border-radius:24px;padding:28px;box-shadow:0 18px 55px rgba(10,43,78,.15);border-top:6px solid var(--gold)}
+    label{display:block;font-weight:750;color:var(--navy);margin:14px 0 7px}
+    input{width:100%;border:2px solid #cbd5e1;border-radius:12px;padding:12px;font:inherit}
+    input:focus-visible,button:focus-visible{outline:3px solid var(--lg);outline-offset:2px}
+    button{border:0;border-radius:11px;padding:10px 13px;font-weight:750;cursor:pointer}
+    .primary{background:var(--blue);color:#fff;width:100%;margin-top:18px;padding:13px}.primary:hover{background:var(--navy)}
+    .error{color:var(--red);min-height:20px;margin-top:10px}
+    .secondary{background:#fff;color:var(--navy);border:1px solid #cbd5e1}
+    .secondary:hover{background:#eef2f7}
+    .dashboard{display:none}
+    .columns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+    .column{background:#fff;border-radius:20px;padding:16px;box-shadow:0 10px 30px rgba(10,43,78,.08);
+      display:flex;flex-direction:column;min-height:260px;max-height:calc(100vh - 250px)}
+    .column h2{margin:0 0 12px;color:var(--navy);display:flex;justify-content:space-between;align-items:center;
+      font-size:1.05rem;flex:0 0 auto}
+    .column-scroll{flex:1;overflow-y:auto;min-height:0}
+    .count{background:var(--navy);color:#fff;border-radius:999px;padding:2px 9px;font-size:.78rem}
+    .question-card{border:1px solid #dbe3ec;border-left:5px solid var(--blue);border-radius:13px;padding:12px;margin-bottom:10px}
+    .question-card p{margin:0 0 8px;line-height:1.4;overflow-wrap:anywhere}
+    .meta{font-size:.76rem;color:#6b7280;margin-bottom:9px}
+    .actions{display:flex;gap:7px;flex-wrap:wrap}
+    .approve{background:#eaf6ed;color:var(--green)}.reject{background:#fff0f0;color:var(--red)}
+    .air{background:var(--gold);color:var(--navy)}.complete{background:var(--navy);color:#fff}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    .empty{color:#98a2b3;text-align:center;padding:35px 6px}
+    .audience-card{background:#fff;border-radius:18px;padding:14px 18px;
+      box-shadow:0 6px 20px rgba(10,43,78,.06);border:1px solid #eef1f5}
+    .audience-card-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+    .audience-card-label{font-weight:800;color:var(--navy);font-size:.95rem}
+    .audience-card-hint{font-size:.78rem;color:#8a94a3}
+    .audience-card-row{display:flex;gap:8px;flex-wrap:wrap}
+    .audience-link-field{flex:1;min-width:220px;background:var(--bg);border:2px solid #e2e8f0;border-radius:11px;
+      padding:11px 14px;font:inherit;font-size:.85rem;color:var(--navy);font-weight:600;cursor:text}
+    .audience-link-field:focus-visible,.audience-link-field:focus{outline:3px solid var(--lg);outline-offset:2px;border-color:var(--blue)}
+    .icon-btn{display:inline-flex;align-items:center;gap:7px;background:#fff;color:var(--navy);
+      border:1px solid #cbd5e1;border-radius:11px;padding:0 16px;font-weight:750;cursor:pointer;white-space:nowrap}
+    .icon-btn:hover{background:#eef2f7}
+    .icon-btn svg{width:16px;height:16px;flex:0 0 auto}
+    .icon-btn.copied{background:#eaf6ed;color:var(--green);border-color:#bfe3c7}
+    .hint{font-size:.8rem;color:#667085;margin-top:10px}
+    .title-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border-radius:16px;
+      padding:14px 18px;box-shadow:0 6px 20px rgba(10,43,78,.06);border:1px solid #eef1f5}
+    .title-bar label{margin:0;white-space:nowrap;font-weight:750;color:var(--navy)}
+    .title-bar input{flex:1;min-width:180px;border:2px solid #cbd5e1;border-radius:11px;padding:9px 12px;font:inherit}
+    #titleStatus{font-size:.8rem;min-width:76px}
+    #titleStatus.success{color:var(--green)}
+    #titleStatus.error{color:var(--red)}
+
+    /* Collapsible event-setup panel (v2.4.1): keeps the title/link config
+       out of the way once an event is configured, so the kanban board gets
+       the bulk of the viewport instead of three stacked config bars. */
+    .setup-details{margin-bottom:14px}
+    .setup-details summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;
+      background:#fff;border-radius:14px;padding:11px 18px;box-shadow:0 4px 14px rgba(10,43,78,.06);
+      user-select:none}
+    .setup-details summary::-webkit-details-marker{display:none}
+    .setup-summary-icon{flex:0 0 auto}
+    .setup-summary-text{flex:1;font-size:.86rem;color:#4b5768;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .setup-summary-text strong{color:var(--navy)}
+    .chevron{flex:0 0 auto;color:#98a2b3;transition:transform .2s ease}
+    .setup-details[open] .chevron{transform:rotate(180deg)}
+    .setup-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+
+    .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+    .toolbar input[type="search"]{flex:1;min-width:180px;border:2px solid #cbd5e1;border-radius:11px;
+      padding:9px 12px;font:inherit}
+    dialog{border:0;border-radius:22px;padding:0;box-shadow:0 26px 80px rgba(10,43,78,.25);width:min(380px,90vw)}
+    dialog::backdrop{background:rgba(10,43,78,.55)}
+    .admin-modal{padding:26px}
+    .admin-modal h2{margin:0 0 6px;color:var(--navy);font-size:1.15rem}
+    .admin-modal p{margin:0 0 16px;color:#667085;font-size:.85rem;line-height:1.4}
+    .admin-modal input{margin-bottom:6px}
+    .admin-modal .error{min-height:18px;font-size:.82rem}
+    .admin-modal-actions{display:flex;gap:10px;margin-top:14px}
+    .admin-modal-actions button{flex:1}
+    .admin-modal-actions .primary{margin-top:0}
+
+    @media(max-width:950px){.columns{grid-template-columns:1fr}.column{max-height:none}.header-info{display:none}}
+    @media(max-width:900px){.setup-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<header>
+  <div class="brand">🎙️ <span>e</span>Hapot Moderator</div>
+  <div class="header-info" id="headerInfo" hidden><b id="moderatorLabel"></b> · Event <b id="eventLabel"></b></div>
+  <div class="conn">Status: <b id="connText">Locked</b></div>
+</header>
+
+<main>
+  <section id="loginPanel" class="login">
+    <h1>Unlock Moderator Dashboard</h1>
+    <label for="name">Moderator name</label>
+    <input id="name" maxlength="100" autocomplete="name">
+
+    <label for="pin">Public event code</label>
+    <input id="pin" type="text" inputmode="text" autocapitalize="characters" maxlength="6" autocomplete="off" style="text-transform:uppercase">
+    <div class="hint" style="margin-top:6px">4–6 letters and/or numbers (no I, L, or O).</div>
+
+    <label for="secret">Moderator secret</label>
+    <input id="secret" type="password" autocomplete="off">
+    <div class="hint">The moderator secret is separate from the public event code and is never placed in a QR code or URL.</div>
+
+    <button id="loginBtn" class="primary" type="button">Unlock Dashboard</button>
+    <div id="loginError" class="error" aria-live="polite"></div>
+  </section>
+
+  <section id="dashboard" class="dashboard">
+    <details id="setupDetails" class="setup-details">
+      <summary>
+        <span class="setup-summary-icon" aria-hidden="true">⚙️</span>
+        <span class="setup-summary-text">Event Setup — <strong id="setupSummaryTitle">Untitled event</strong> · PIN <span id="setupSummaryPin"></span></span>
+        <span class="chevron" aria-hidden="true">▾</span>
+      </summary>
+
+      <div class="setup-grid">
+        <div class="title-bar">
+          <label for="eventTitleInput">🏷️ Event Title</label>
+          <input id="eventTitleInput" type="text" maxlength="120"
+                 placeholder="Shown on the projector — e.g. BISCAST Freshman Orientation 2026">
+          <button id="saveTitleBtn" class="secondary" type="button">Save</button>
+          <span id="titleStatus" aria-live="polite"></span>
+        </div>
+
+        <div class="audience-card">
+          <div class="audience-card-head">
+            <span class="audience-card-label">🔗 Audience Entry Link</span>
+            <span class="audience-card-hint">Share this so attendees can submit questions</span>
+          </div>
+          <div class="audience-card-row">
+            <input id="audienceLink" class="audience-link-field" type="text" readonly
+                   aria-label="Audience entry URL — click to select, then copy">
+            <button id="openAudienceBtn" class="icon-btn" type="button" title="Open in a new tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <path d="M15 3h6v6"/>
+                <path d="M10 14 21 3"/>
+              </svg>
+              <span>Open</span>
+            </button>
+            <button id="copyAudienceBtn" class="icon-btn" type="button" title="Copy link to clipboard">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              <span id="copyBtnLabel">Copy Link</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="title-bar" id="logoBar" style="margin-top:12px">
+        <label for="logoUrlInput">🏫 Institution Logo</label>
+        <input id="logoUrlInput" type="url" maxlength="300"
+               placeholder="https://jsdelacruzbiscast.github.io/ehapot/assets/biscast-logo.png">
+        <img id="logoPreview" alt="" hidden style="width:28px;height:28px;object-fit:contain;border-radius:6px">
+        <button id="saveLogoBtn" class="secondary" type="button">Save</button>
+        <span id="logoStatus" aria-live="polite"></span>
+      </div>
+      <div class="hint">Applies to every event, not just this one — used on the projector footer and PDF reports. A GitHub-hosted image (same repo as this site) loads fastest and avoids cross-origin issues.</div>
+    </details>
+
+    <div class="toolbar">
+      <input id="searchBox" type="search" placeholder="Filter by text or name…" autocomplete="off">
+      <button id="adminAccessBtn" class="secondary" type="button">🔐 Admin Access</button>
+      <button id="exportBtn" class="secondary" type="button">📄 Export PDF Report</button>
+      <button id="refreshBtn" class="secondary" type="button">Refresh</button>
+      <button id="logoutBtn" class="secondary" type="button">Lock</button>
+    </div>
+
+    <div class="columns">
+      <section class="column" aria-labelledby="pendingTitle">
+        <h2 id="pendingTitle">Pending <span id="pendingCount" class="count">0</span></h2>
+        <div id="pendingList" class="column-scroll"></div>
+      </section>
+      <section class="column" aria-labelledby="deckTitle">
+        <h2 id="deckTitle">On Deck <span id="deckCount" class="count">0</span></h2>
+        <div id="deckList" class="column-scroll"></div>
+      </section>
+      <section class="column" aria-labelledby="airTitle">
+        <h2 id="airTitle">On Air <span id="airCount" class="count">0</span></h2>
+        <div id="airList" class="column-scroll"></div>
+      </section>
+    </div>
+  </section>
+</main>
+
+<dialog id="adminDialog" aria-labelledby="adminDialogTitle">
+  <div class="admin-modal">
+    <h2 id="adminDialogTitle">🔐 Admin Access</h2>
+    <p>Separate from your moderator password. Grants a one-time link to the live Google Sheet (QnA_Master / Audit_Log) for this event.</p>
+    <label for="adminSecretInput">Admin password</label>
+    <input id="adminSecretInput" type="password" autocomplete="off">
+    <div id="adminDialogError" class="error" aria-live="polite"></div>
+    <div class="admin-modal-actions">
+      <button id="adminCancelBtn" class="secondary" type="button">Cancel</button>
+      <button id="adminSubmitBtn" class="primary" type="button" style="margin-top:0">Unlock</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+
+  if (typeof CONFIG === 'undefined') {
+    document.body.innerHTML = '<main style="font-family:system-ui;padding:2rem"><h1>eHapot configuration error</h1><p>config.js could not be loaded.</p></main>';
+    throw new Error('CONFIG is not defined');
+  }
+
+  const pinRegex = new RegExp(CONFIG.EVENT_PIN_PATTERN);
+  const loginPanel = document.getElementById('loginPanel');
+  const dashboard = document.getElementById('dashboard');
+  const nameInput = document.getElementById('name');
+  const pinInput = document.getElementById('pin');
+  const secretInput = document.getElementById('secret');
+  const loginError = document.getElementById('loginError');
+  const connText = document.getElementById('connText');
+
+  let moderatorName = '';
+  let eventPin = '';
+  let moderatorSecret = '';
+  let timer = null;
+  let pollGen = 0; // v2.4.0: guards against overlapping refresh cycles clobbering each other's timers
+  let locked = true;
+  let busy = false;
+  let currentFeed = {pending:[], onDeck:[], onAir:null};
+  let previousPendingCount = 0;
+  let audioContext = null;
+  let searchTerm = '';
+
+  function matchesSearch(q) {
+    if (!searchTerm) return true;
+    const haystack = `${q.text || ''} ${q.submittedBy || ''}`.toLowerCase();
+    return haystack.includes(searchTerm);
+  }
+
+  pinInput.value = (new URLSearchParams(location.search).get('pin') || localStorage.getItem('eHapot_event_pin') || '').toUpperCase();
+  pinInput.addEventListener('input', () => {
+    pinInput.value = pinInput.value.toUpperCase().replace(/[^A-HJ-KM-NP-Z0-9]/g, '').slice(0, 6);
+  });
+
+  function setConnection(text) { connText.textContent = text; }
+
+  async function post(payload) {
+    const controller = new AbortController();
+    const timeoutMs = CONFIG.MODERATOR_REQUEST_TIMEOUT || 45000;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(CONFIG.ENDPOINT, {
+        method:'POST',
+        headers:{'Content-Type':'text/plain;charset=UTF-8'},
+        body:JSON.stringify(payload),
+        redirect:'follow',
+        signal:controller.signal
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data || data.ok !== true) throw new Error(data?.error || 'Backend request failed');
+      return data;
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        throw new Error(`Moderator request timed out after ${Math.round(timeoutMs / 1000)} seconds. Please retry; if it repeats, verify the Apps Script deployment.`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  function authPayload(action) {
+    return {action, pin:eventPin, moderatorName, moderatorSecret};
+  }
+
+  function audienceUrl() {
+    const url = new URL('submit.html', location.href);
+    url.search = '';
+    url.searchParams.set('pin', eventPin);
+    return url.href;
+  }
+
+  function showAudienceLink() {
+    const el = document.getElementById('audienceLink');
+    el.value = audienceUrl();
+  }
+
+  const audienceLinkField = document.getElementById('audienceLink');
+  audienceLinkField.addEventListener('focus', () => audienceLinkField.select());
+  audienceLinkField.addEventListener('click', () => audienceLinkField.select());
+
+  document.getElementById('openAudienceBtn').addEventListener('click', () => {
+    window.open(audienceUrl(), '_blank', 'noopener');
+  });
+
+  document.getElementById('copyAudienceBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('copyAudienceBtn');
+    const label = document.getElementById('copyBtnLabel');
+    const url = audienceUrl();
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch (_) {
+      // Clipboard API unavailable or blocked (e.g. non-HTTPS, permissions) —
+      // fall back to a manual-copy prompt instead of failing silently.
+      window.prompt('Copy this link:', url);
+      return;
+    }
+    const original = label.textContent;
+    label.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      label.textContent = original;
+      btn.classList.remove('copied');
+    }, 1500);
+  });
+
+  // ------------------------------------------------------------------
+  // Admin Access (v2.4.1): a second, separate credential tier gating the
+  // raw Google Sheet link. Holding the moderator password alone no longer
+  // reveals it — see verifyAdmin_ in Code.gs. The URL is cached in memory
+  // only (never localStorage) and cleared on logout, so re-entering the
+  // dashboard always re-prompts.
+  // ------------------------------------------------------------------
+  let adminSheetUrl = null;
+
+  const adminDialog = document.getElementById('adminDialog');
+  const adminSecretInput = document.getElementById('adminSecretInput');
+  const adminDialogError = document.getElementById('adminDialogError');
+  const adminSubmitBtn = document.getElementById('adminSubmitBtn');
+  const adminAccessBtn = document.getElementById('adminAccessBtn');
+
+  function resetAdminAccess() {
+    adminSheetUrl = null;
+    adminAccessBtn.textContent = '🔐 Admin Access';
+  }
+
+  adminAccessBtn.addEventListener('click', () => {
+    if (adminSheetUrl) {
+      window.open(adminSheetUrl, '_blank', 'noopener');
+      return;
+    }
+    adminSecretInput.value = '';
+    adminDialogError.textContent = '';
+    adminDialog.showModal();
+    adminSecretInput.focus();
+  });
+
+  document.getElementById('adminCancelBtn').addEventListener('click', () => adminDialog.close());
+  adminDialog.addEventListener('click', e => { if (e.target === adminDialog) adminDialog.close(); });
+  adminSecretInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitAdminAccess(); });
+  adminSubmitBtn.addEventListener('click', submitAdminAccess);
+
+  async function submitAdminAccess() {
+    const adminSecret = adminSecretInput.value;
+    if (!adminSecret) {
+      adminDialogError.textContent = 'Enter the admin password.';
+      return;
+    }
+
+    adminSubmitBtn.disabled = true;
+    const original = adminSubmitBtn.textContent;
+    adminSubmitBtn.textContent = 'Checking…';
+    adminDialogError.textContent = '';
+
+    try {
+      const data = await post({...authPayload('verifyAdmin'), adminSecret});
+      adminSheetUrl = data.sheetUrl;
+      adminAccessBtn.textContent = '📊 Open Audit Log';
+      adminDialog.close();
+      window.open(adminSheetUrl, '_blank', 'noopener');
+    } catch (err) {
+      adminDialogError.textContent = err.message || 'Could not verify admin password.';
+    } finally {
+      adminSubmitBtn.disabled = false;
+      adminSubmitBtn.textContent = original;
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Event title (v2.4.0): configured here, displayed on the projector.
+  // Persisted server-side (per PIN) so it survives refreshes and is
+  // visible to every moderator/projector for the event, not just this
+  // browser tab.
+  // ------------------------------------------------------------------
+  const eventTitleInput = document.getElementById('eventTitleInput');
+  const saveTitleBtn = document.getElementById('saveTitleBtn');
+  const titleStatus = document.getElementById('titleStatus');
+  const setupSummaryTitle = document.getElementById('setupSummaryTitle');
+  const setupSummaryPin = document.getElementById('setupSummaryPin');
+
+  function updateSetupSummary() {
+    const title = eventTitleInput.value.trim();
+    setupSummaryTitle.textContent = title || 'Untitled event';
+    setupSummaryPin.textContent = eventPin || '----';
+  }
+
+  function applyEventTitle(title) {
+    if (typeof title !== 'string') return;
+    if (document.activeElement === eventTitleInput) return; // don't clobber while the moderator is typing
+    eventTitleInput.value = title;
+    updateSetupSummary();
+  }
+
+  async function saveEventTitle() {
+    const title = eventTitleInput.value.trim().slice(0, 120);
+    saveTitleBtn.disabled = true;
+    const original = saveTitleBtn.textContent;
+    saveTitleBtn.textContent = 'Saving…';
+    titleStatus.textContent = '';
+    titleStatus.className = '';
+    try {
+      const data = await post({...authPayload('setEventTitle'), title});
+      eventTitleInput.value = typeof data.eventTitle === 'string' ? data.eventTitle : title;
+      titleStatus.textContent = 'Saved ✓';
+      titleStatus.className = 'success';
+      updateSetupSummary();
+    } catch (err) {
+      titleStatus.textContent = err.message || 'Could not save title.';
+      titleStatus.className = 'error';
+    } finally {
+      saveTitleBtn.disabled = false;
+      saveTitleBtn.textContent = original;
+      setTimeout(() => { titleStatus.textContent = ''; titleStatus.className = ''; }, 4000);
+    }
+  }
+
+  saveTitleBtn.addEventListener('click', saveEventTitle);
+  eventTitleInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); saveEventTitle(); }
+  });
+
+  // ------------------------------------------------------------------
+  // Institution Logo (v2.4.2): global, not per-PIN — one save applies to
+  // every event's PDF report / projector branding. Same server round-trip
+  // pattern as Event Title, just posted to a different action.
+  // ------------------------------------------------------------------
+  const logoUrlInput = document.getElementById('logoUrlInput');
+  const logoPreview = document.getElementById('logoPreview');
+  const saveLogoBtn = document.getElementById('saveLogoBtn');
+  const logoStatus = document.getElementById('logoStatus');
+  let currentLogoUrl = '';
+
+  function updateLogoPreview(url) {
+    if (url) {
+      logoPreview.src = url;
+      logoPreview.hidden = false;
+    } else {
+      logoPreview.hidden = true;
+      logoPreview.removeAttribute('src');
+    }
+  }
+  logoPreview.addEventListener('error', () => { logoPreview.hidden = true; });
+
+  function applyInstitutionLogo(url) {
+    if (typeof url !== 'string') return;
+    currentLogoUrl = url;
+    if (document.activeElement === logoUrlInput) return; // don't clobber while typing
+    logoUrlInput.value = url;
+    updateLogoPreview(url);
+  }
+
+  async function saveInstitutionLogo() {
+    const logoUrl = logoUrlInput.value.trim().slice(0, 300);
+    saveLogoBtn.disabled = true;
+    const original = saveLogoBtn.textContent;
+    saveLogoBtn.textContent = 'Saving…';
+    logoStatus.textContent = '';
+    logoStatus.className = '';
+    try {
+      const data = await post({...authPayload('setInstitutionLogo'), logoUrl});
+      currentLogoUrl = typeof data.logoUrl === 'string' ? data.logoUrl : logoUrl;
+      logoUrlInput.value = currentLogoUrl;
+      updateLogoPreview(currentLogoUrl);
+      logoStatus.textContent = 'Saved ✓';
+      logoStatus.className = 'success';
+    } catch (err) {
+      logoStatus.textContent = err.message || 'Could not save logo.';
+      logoStatus.className = 'error';
+    } finally {
+      saveLogoBtn.disabled = false;
+      saveLogoBtn.textContent = original;
+      setTimeout(() => { logoStatus.textContent = ''; logoStatus.className = ''; }, 4000);
+    }
+  }
+
+  saveLogoBtn.addEventListener('click', saveInstitutionLogo);
+  logoUrlInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); saveInstitutionLogo(); }
+  });
+
+  function playChime() {
+    try {
+      if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.frequency.value = 720;
+      gain.gain.setValueAtTime(0.04, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.18);
+      osc.connect(gain); gain.connect(audioContext.destination);
+      osc.start(); osc.stop(audioContext.currentTime + 0.18);
+    } catch (_) {}
+  }
+
+  function empty(container, message) {
+    container.replaceChildren();
+    const el = document.createElement('div');
+    el.className = 'empty'; el.textContent = message; container.append(el);
+  }
+
+  function makeCard(q, buttons) {
+    const card = document.createElement('article');
+    card.className = 'question-card';
+
+    const p = document.createElement('p');
+    p.textContent = q.text || '';
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = `${q.submittedBy || 'Anonymous'} · ${new Date(q.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
+
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+
+    for (const spec of buttons) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = spec.className; b.textContent = spec.label;
+      b.disabled = busy;
+      b.addEventListener('click', () => spec.onClick(q));
+      actions.append(b);
+    }
+
+    card.append(p,meta,actions);
+    return card;
+  }
+
+  function renderFeed(feed) {
+    currentFeed = feed;
+    applyEventTitle(feed.eventTitle);
+    applyInstitutionLogo(feed.logoUrl);
+    const pending = Array.isArray(feed.pending) ? feed.pending : [];
+    const deck = Array.isArray(feed.onDeck) ? feed.onDeck : [];
+    const air = feed.onAir || null;
+
+    // Counts reflect the true totals, not the filtered view, so moderators
+    // always know the real queue size even while searching.
+    document.getElementById('pendingCount').textContent = pending.length;
+    document.getElementById('deckCount').textContent = deck.length;
+    document.getElementById('airCount').textContent = air ? '1' : '0';
+
+    const pBox = document.getElementById('pendingList');
+    const dBox = document.getElementById('deckList');
+    const aBox = document.getElementById('airList');
+
+    pBox.replaceChildren();
+    dBox.replaceChildren();
+    aBox.replaceChildren();
+
+    const visiblePending = pending.filter(matchesSearch);
+    const visibleDeck = deck.filter(matchesSearch);
+
+    if (!pending.length) empty(pBox,'No pending questions');
+    else if (!visiblePending.length) empty(pBox,'No matches for this filter');
+    else visiblePending.forEach(q => pBox.append(makeCard(q,[
+      {label:'✅ Approve',className:'approve',onClick:()=>transition(q,'APPROVED')},
+      {label:'❌ Reject',className:'reject',onClick:()=>reject(q)}
+    ])));
+
+    if (!deck.length) empty(dBox,'No approved questions');
+    else if (!visibleDeck.length) empty(dBox,'No matches for this filter');
+    else visibleDeck.forEach(q => dBox.append(makeCard(q,[
+      {label:'📢 Send to Screen',className:'air',onClick:()=>transition(q,'ON_AIR')}
+    ])));
+
+    if (!air) empty(aBox,'No question is live');
+    else aBox.append(makeCard(air,[
+      {label:'✅ Answered & Close',className:'complete',onClick:()=>transition(air,'COMPLETED')}
+    ]));
+
+    if (pending.length > previousPendingCount && previousPendingCount >= 0) playChime();
+    previousPendingCount = pending.length;
+  }
+
+  function scheduleRefresh(delay) {
+    clearTimeout(timer);
+    const myGen = pollGen;
+    timer = setTimeout(() => {
+      if (myGen === pollGen) refreshFeed();
+    }, delay);
+  }
+
+  async function refreshFeed(scheduleNext = true) {
+    if (locked) return;
+    // Snapshot the generation before awaiting. If a newer cycle starts
+    // (e.g. login, or another refreshFeed call bumps pollGen) while this
+    // request is in flight, this response is stale and must not be allowed
+    // to reschedule or clobber a timer a newer cycle already set up.
+    const myGen = pollGen;
+    try {
+      const data = await post(authPayload('getModeratorFeed'));
+      if (myGen !== pollGen) return;
+      setConnection('Live');
+      renderFeed(data);
+    } catch (err) {
+      if (myGen !== pollGen) return;
+      console.error('[eHapot moderator]', err);
+      setConnection(navigator.onLine ? 'Reconnecting…' : 'Offline');
+    } finally {
+      if (myGen === pollGen && !locked && scheduleNext) scheduleRefresh(CONFIG.MODERATOR_POLL_INTERVAL);
+    }
+  }
+
+  async function transition(q, toState, reason='') {
+    if (busy) return;
+    busy = true;
+
+    // Optimistic UI: pull the item out of view immediately so the column
+    // change feels instant, instead of waiting on the network round trip.
+    renderFeed({
+      pending: currentFeed.pending.filter(x => x.id !== q.id),
+      onDeck: currentFeed.onDeck.filter(x => x.id !== q.id),
+      onAir: currentFeed.onAir && currentFeed.onAir.id === q.id ? null : currentFeed.onAir,
+      recentCompleted: currentFeed.recentCompleted
+    });
+
+    try {
+      // v2.3.0: the backend now returns the fresh feed in this same
+      // response, so there's no second request needed to re-sync.
+      const data = await post({...authPayload('transitionQuestion'), questionId:q.id, toState, reason});
+      renderFeed(data.feed);
+    } catch (err) {
+      alert(err.message);
+      // The optimistic view may now be wrong (item removed but the
+      // transition didn't actually happen) — resync with the server.
+      await refreshFeed(false);
+    } finally {
+      busy = false;
+      // v2.4.0: bump the generation so any auto-poll that was in flight
+      // during this transition can't win a race and clobber the timer
+      // we're about to set here.
+      pollGen++;
+      if (!locked) scheduleRefresh(CONFIG.MODERATOR_POLL_INTERVAL);
+    }
+  }
+
+  function reject(q) {
+    const reason = prompt('Rejection reason (optional):','') ?? null;
+    if (reason === null) return;
+    transition(q,'REJECTED',reason.trim());
+  }
+
+  async function login() {
+    loginError.textContent = '';
+    moderatorName = nameInput.value.trim();
+    eventPin = pinInput.value.trim().toUpperCase();
+    moderatorSecret = secretInput.value;
+
+    if (moderatorName.length < 2) { loginError.textContent = 'Enter the moderator name.'; return; }
+    if (!pinRegex.test(eventPin)) { loginError.textContent = 'Enter a valid 4–6 character event code (letters excluding I, L, O, and/or numbers).'; return; }
+    if (!moderatorSecret) { loginError.textContent = 'Enter the moderator secret.'; return; }
+
+    document.getElementById('loginBtn').disabled = true;
+    setConnection('Authenticating…');
+
+    try {
+      await post(authPayload('verifyModerator'));
+      locked = false;
+      localStorage.setItem('eHapot_event_pin', eventPin);
+      loginPanel.style.display = 'none';
+      dashboard.style.display = 'block';
+      document.getElementById('moderatorLabel').textContent = moderatorName;
+      document.getElementById('eventLabel').textContent = eventPin;
+      document.getElementById('headerInfo').hidden = false;
+      updateSetupSummary();
+      secretInput.value = '';
+      previousPendingCount = -1;
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        await audioContext.resume();
+      } catch (_) {}
+      showAudienceLink();
+      resetAdminAccess();
+      pollGen++;
+      await refreshFeed();
+    } catch (err) {
+      moderatorSecret = '';
+      loginError.textContent = err.message || 'Unable to reach the eHapot backend.';
+      setConnection('Locked');
+    } finally {
+      document.getElementById('loginBtn').disabled = false;
+    }
+  }
+
+  function csvToRows(csvText) {
+    const parsed = Papa.parse(csvText.trim(), { skipEmptyLines: true });
+    return parsed.data; // [ [header...], [row...], ... ]
+  }
+
+  // Turns the current Event Title into a safe filename fragment. Falls
+  // back to the PIN if the title is empty or reduces to nothing usable
+  // (e.g. it was all emoji/punctuation) — a report should never end up
+  // with a blank or garbled filename.
+  function reportFileBase() {
+    const title = eventTitleInput.value.trim();
+    const slug = title
+      .normalize('NFKD').replace(/[\u0300-\u036f]/g, '') // strip accents
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 60);
+    const base = slug || `Event_${eventPin}`;
+    return `eHapot_${base}_${new Date().toISOString().slice(0,10)}`;
+  }
+
+  function downloadCsvFallback(csvText) {
+    const blob = new Blob([csvText], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${reportFileBase()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // Fetches the institution logo and converts it to a data URL jsPDF can
+  // embed via addImage(). Returns null on any failure (missing URL, network
+  // error, CORS block, unsupported format) so the PDF still generates
+  // cleanly without a logo rather than failing the whole export.
+  async function loadLogoForPdf(url) {
+    if (!url) return null;
+    try {
+      const res = await fetch(url, { mode: 'cors' });
+      if (!res.ok) throw new Error(`logo fetch failed (HTTP ${res.status})`);
+      const blob = await res.blob();
+
+      const format = blob.type.includes('png') ? 'PNG'
+        : (blob.type.includes('jpeg') || blob.type.includes('jpg')) ? 'JPEG'
+        : null;
+      if (!format) throw new Error(`unsupported logo format: ${blob.type || 'unknown'} (use PNG or JPEG)`);
+
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('could not read logo file'));
+        reader.readAsDataURL(blob);
+      });
+
+      const { w, h } = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = () => reject(new Error('could not read logo dimensions'));
+        img.src = dataUrl;
+      });
+
+      return { dataUrl, format, w, h };
+    } catch (err) {
+      console.warn('[eHapot moderator] institution logo unavailable for PDF, continuing without it:', err.message);
+      return null;
+    }
+  }
+
+  async function buildPdfReport(csvText) {
+    const rows = csvToRows(csvText);
+    const csvHeader = rows[0] || [];
+    const csvBody = rows.slice(1);
+
+    // Look up columns by name rather than position, so this keeps working
+    // even if exportEventCsv_'s column order ever changes.
+    const col = name => csvHeader.indexOf(name);
+    const idx = {
+      timestamp: col('Timestamp'),
+      question: col('Question'),
+      status: col('Status'),
+      modTimestamp: col('Mod Timestamp'),
+      rejectionReason: col('Rejection Reason')
+    };
+
+    const tableBody = csvBody.map(r => [
+      r[idx.timestamp] || '',
+      r[idx.question] || '',
+      r[idx.status] || '',
+      r[idx.modTimestamp] || '',
+      r[idx.rejectionReason] || ''
+    ]);
+
+    const eventName = eventTitleInput.value.trim() || `Event ${eventPin}`;
+    const reportDate = new Date().toLocaleString();
+    const logo = await loadLogoForPdf(currentLogoUrl);
+
+    const doc = new jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 40;
+    const HEAD_Y = 98; // where the table starts below the repeated header block
+
+    // Logo sized to a fixed height, width derived from its own aspect
+    // ratio (capped) so it never stretches or squashes.
+    const LOGO_MAX_H = 34, LOGO_MAX_W = 100;
+    let logoW = 0, logoH = 0;
+    if (logo) {
+      logoH = LOGO_MAX_H;
+      logoW = (logo.w / logo.h) * logoH;
+      if (logoW > LOGO_MAX_W) { logoW = LOGO_MAX_W; logoH = (logo.h / logo.w) * logoW; }
+    }
+    const textX = logo ? margin + logoW + 12 : margin;
+
+    function drawHeader() {
+      if (logo) {
+        doc.addImage(logo.dataUrl, logo.format, margin, 12, logoW, logoH);
+      }
+
+      // App wordmark, top-left (shifted right of the logo, if present).
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(10, 43, 78); // navy
+      doc.text('eHapot', textX, 38);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(140, 148, 163);
+      doc.text('Interactive Q&A Engine · BISCAST SDS', textX, 52);
+
+      // Event name, second line, left.
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(30, 40, 55);
+      doc.text(`Event: ${eventName}`, textX, 74);
+
+      // Date + meta, top-right.
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(110, 120, 135);
+      doc.text(`Generated: ${reportDate}`, pageWidth - margin, 38, { align: 'right' });
+      doc.text(
+        `Event PIN ${eventPin} · ${tableBody.length} question${tableBody.length === 1 ? '' : 's'}`,
+        pageWidth - margin, 52, { align: 'right' }
+      );
+
+      // Gold brand rule under the header block.
+      doc.setDrawColor(212, 160, 23);
+      doc.setLineWidth(1.3);
+      doc.line(margin, 84, pageWidth - margin, 84);
+    }
+
+    function drawFooter() {
+      const pageNum = doc.internal.getNumberOfPages();
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(160, 168, 180);
+      doc.text('eHapot · BISCAST Student Development Services', margin, pageHeight - 20);
+      doc.text(`Page ${pageNum}`, pageWidth - margin, pageHeight - 20, { align: 'right' });
+    }
+
+    // Fixed widths for every column except Question, which absorbs the rest
+    // of the row — keeps the table legible instead of relying on autoTable
+    // to guess a sensible split.
+    const fixedWidths = { timestamp: 92, status: 68, modTimestamp: 92, rejectionReason: 150 };
+    const usableWidth = pageWidth - margin * 2;
+    const questionWidth = usableWidth - (fixedWidths.timestamp + fixedWidths.status + fixedWidths.modTimestamp + fixedWidths.rejectionReason);
+
+    doc.autoTable({
+      head: [['Timestamp', 'Question', 'Status', 'Mod Timestamp', 'Rejection Reason']],
+      body: tableBody,
+      startY: HEAD_Y,
+      margin: { left: margin, right: margin, top: HEAD_Y, bottom: 46 },
+      styles: { fontSize: 8.5, cellPadding: 6, overflow: 'linebreak', valign: 'top', textColor: [40, 48, 60] },
+      headStyles: { fillColor: [10, 43, 78], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+      alternateRowStyles: { fillColor: [244, 247, 252] },
+      columnStyles: {
+        0: { cellWidth: fixedWidths.timestamp },
+        1: { cellWidth: questionWidth },
+        2: { cellWidth: fixedWidths.status },
+        3: { cellWidth: fixedWidths.modTimestamp },
+        4: { cellWidth: fixedWidths.rejectionReason }
+      },
+      didDrawPage: () => {
+        drawHeader();
+        drawFooter();
+      }
+    });
+
+    // Signature block at the true end of the report — add a fresh page if
+    // there isn't comfortable room left on the last table page.
+    let sigY = (doc.lastAutoTable ? doc.lastAutoTable.finalY : HEAD_Y) + 56;
+    if (sigY > pageHeight - 90) {
+      doc.addPage();
+      drawHeader();
+      drawFooter();
+      sigY = HEAD_Y + 40;
+    }
+
+    doc.setDrawColor(120, 128, 140);
+    doc.setLineWidth(0.8);
+    doc.line(margin, sigY, margin + 260, sigY);
+    doc.line(pageWidth - margin - 200, sigY, pageWidth - margin, sigY);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(70, 80, 95);
+    doc.text('Moderator Signature over Printed Name', margin, sigY + 14);
+    doc.text('Date', pageWidth - margin - 200, sigY + 14);
+
+    doc.save(`${reportFileBase()}.pdf`);
+  }
+
+  async function exportReport() {
+    const btn = document.getElementById('exportBtn');
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = 'Exporting…';
+    try {
+      const data = await post(authPayload('exportEventCsv'));
+
+      const pdfLibsReady =
+        typeof jspdf !== 'undefined' &&
+        typeof jspdf.jsPDF === 'function' &&
+        typeof Papa !== 'undefined';
+
+      if (pdfLibsReady) {
+        await buildPdfReport(data.csv);
+      } else {
+        // Graceful degrade: same data, just not the polished PDF layout.
+        console.warn('[eHapot moderator] PDF libraries unavailable, falling back to CSV.');
+        downloadCsvFallback(data.csv);
+      }
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  }
+
+  function logout() {
+    locked = true;
+    pollGen++;
+    clearTimeout(timer);
+    moderatorSecret = '';
+    currentFeed = {pending:[],onDeck:[],onAir:null};
+    dashboard.style.display = 'none';
+    loginPanel.style.display = 'block';
+    setConnection('Locked');
+    document.getElementById('headerInfo').hidden = true;
+    document.getElementById('setupDetails').open = false;
+    resetAdminAccess();
+    document.getElementById('audienceLink').value = '';
+    eventTitleInput.value = '';
+    logoUrlInput.value = '';
+    currentLogoUrl = '';
+    updateLogoPreview('');
+    secretInput.value = '';
+    searchTerm = '';
+    document.getElementById('searchBox').value = '';
+    secretInput.focus();
+  }
+
+  document.getElementById('loginBtn').addEventListener('click', login);
+  secretInput.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+  document.getElementById('refreshBtn').addEventListener('click', () => refreshFeed(false));
+  document.getElementById('exportBtn').addEventListener('click', exportReport);
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  document.getElementById('searchBox').addEventListener('input', e => {
+    searchTerm = e.target.value.trim().toLowerCase();
+    renderFeed(currentFeed);
+  });
+  window.addEventListener('offline', () => setConnection('Offline'));
+  window.addEventListener('online', () => { if (!locked) refreshFeed(false); });
+
+  document.addEventListener('keydown', e => {
+    if (locked || !(e.ctrlKey || e.metaKey)) return;
+    if (e.key === 'ArrowUp' && currentFeed.pending?.[0]) {
+      e.preventDefault(); transition(currentFeed.pending[0],'APPROVED');
+    } else if (e.key === 'ArrowRight' && currentFeed.onDeck?.[0]) {
+      e.preventDefault(); transition(currentFeed.onDeck[0],'ON_AIR');
+    } else if (e.key === 'ArrowDown' && currentFeed.onAir) {
+      e.preventDefault(); transition(currentFeed.onAir,'COMPLETED');
+    }
+  });
+})();
+</script>
+</body>
+</html>
