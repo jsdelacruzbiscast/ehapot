@@ -639,12 +639,27 @@
     return parsed.data; // [ [header...], [row...], ... ]
   }
 
+  // Turns the current Event Title into a safe filename fragment. Falls
+  // back to the PIN if the title is empty or reduces to nothing usable
+  // (e.g. it was all emoji/punctuation) — a report should never end up
+  // with a blank or garbled filename.
+  function reportFileBase() {
+    const title = eventTitleInput.value.trim();
+    const slug = title
+      .normalize('NFKD').replace(/[\u0300-\u036f]/g, '') // strip accents
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 60);
+    const base = slug || `Event_${eventPin}`;
+    return `eHapot_${base}_${new Date().toISOString().slice(0,10)}`;
+  }
+
   function downloadCsvFallback(csvText) {
     const blob = new Blob([csvText], {type:'text/csv;charset=utf-8;'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `eHapot_${eventPin}_${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `${reportFileBase()}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -776,7 +791,7 @@
     doc.text('Moderator Signature over Printed Name', margin, sigY + 14);
     doc.text('Date', pageWidth - margin - 200, sigY + 14);
 
-    doc.save(`eHapot_${eventPin}_${new Date().toISOString().slice(0,10)}.pdf`);
+    doc.save(`${reportFileBase()}.pdf`);
   }
 
   async function exportReport() {
