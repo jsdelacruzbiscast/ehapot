@@ -1,0 +1,2099 @@
+/**
+ * ============================================================================
+ * eHapot Backend Engine
+ * BISCAST Student Development Services
+ * Version 2.4.1
+ * ============================================================================
+ *
+ * ARCHITECTURE
+ * Frontend: GitHub Pages / static HTML
+ * Backend: Google Apps Script Web App
+ * Database: Google Sheets
+ *
+ * SECURITY MODEL
+ * 1. EVENT PIN
+ *        - Public 4-6 digit session identifier.
+ *        - May appear in audience/projector URLs.
+ *        - NOT a moderator password.
+ *
+ * 2. MODERATOR_SECRET
+ *        - Private credential stored only in Apps Script Script Properties.
+ *        - Required for every moderator-only backend request.
+ *
+ * 3. ADMIN_SECRET (v2.4.1)
+ *        - Separate, higher-tier credential, also Script-Properties-only.
+ *        - Grants the raw Google Sheet link (QnA_Master / Audit_Log) via the
+ *          'verifyAdmin' action. A moderator session alone does NOT expose
+ *          this URL - the old public launchpad "View Audit Logs" card and
+ *          the auto-shown Sheet link in the moderator dashboard were both
+ *          removed for this exact reason (anyone with MODERATOR_SECRET
+ *          previously got sheet-edit access for free).
+ *        - If ADMIN_SECRET is not set, the action fails closed with a
+ *          config error rather than silently granting access.
+ *
+ * OPTIONAL SCRIPT PROPERTY
+ *        ACTIVE_EVENT_PIN
+ *        - If set, only that event PIN is accepted.
+ *        - If NOT set, any valid 4-6 digit event PIN is allowed.
+ *        - This prevents a missing ACTIVE_EVENT_PIN from breaking the system.
+ *
+ * REQUIRED SCRIPT PROPERTIES
+ *        MODERATOR_SECRET
+ *        ADMIN_SECRET   (required only for the Admin Access / Audit Log
+ *                         feature - the rest of eHapot works without it)
+ *
+ * DATABASE
+ * QnA_Master:
+ * ID | Timestamp | PIN | Question | Submitted_By | Status |
+ * Moderator_Name | Mod_Timestamp | Rejection_Reason
+ *
+ * Audit_Log:
+ * Timestamp | Actor | Action | Question_ID |
+ * From_State | To_State | Meta
+ *
+ * Event_Settings (v2.4.0):
+ * PIN | Setting_Key | Setting_Value | Updated_At | Updated_By
+ * One row per (PIN, key) pair. Generic so future per-event settings
+ * (e.g. an audience-size poll-interval toggle) can reuse the same sheet
+ * without another schema change. Currently used for: eventTitle.
+ * ============================================================================
+ */
+
+const EHAPOT = Object.freeze({
+    VERSION: '2.4.2',
+
+    // Existing eHapot database.
+    SPREADSHEET_ID: '1mq64Mm6_WXSiSv0I_XnSIMQwY8NAj3l51yfJ-CMSdHE',
+
+    QUESTION_SHEET: 'QnA_Master',
+    AUDIT_SHEET: 'Audit_Log',
+    SETTINGS_SHEET: 'Event_Settings',
+
+    // v2.4.2: not a real event PIN (it's non-numeric, so it can never
+    // collide with a valid 4-6 digit EVENT_PIN_REGEX match) — a sentinel
+    // row in Event_Settings for institution-wide config, like the logo,
+    // that applies across every event rather than being scoped to one.
+    GLOBAL_SETTINGS_PIN: 'GLOBAL',
+
+    EVENT_PIN_REGEX: /^[0-9]{4,6}$/,
+
+    MIN_QUESTION_LENGTH: 3,
+    MAX_QUESTION_LENGTH: 500,
+    MAX_NAME_LENGTH: 80,
+    MAX_MODERATOR_NAME_LENGTH: 100,
+    MAX_REJECTION_REASON_LENGTH: 500,
+    MAX_EVENT_TITLE_LENGTH: 120,
+    MAX_LOGO_URL_LENGTH: 300,
+
+    RATE_LIMIT_SECONDS: 10,
+    FEED_CACHE_SECONDS: 3,
+
+    LOCK_TIMEOUT_MS: 20000,
+
+    // Keep cache payload comfortably below CacheService item-size limits.
+    MAX_CACHE_BYTES: 90000
+});
+
+
+const STATES = Object.freeze({
+    PENDING: 'PENDING',
+    APPROVED: 'APPROVED',
+    ON_AIR: 'ON_AIR',
+    COMPLETED: 'COMPLETED',
+    REJECTED: 'REJECTED'
+});
+
+
+const QUESTION_HEADERS = Object.freeze([
+    'ID',
+    'Timestamp',
+    'PIN',
+    'Question',
+    'Submitted_By',
+    'Status',
+    'Moderator_Name',
+    'Mod_Timestamp',
+    'Rejection_Reason'
+]);
+
+
+const AUDIT_HEADERS = Object.freeze([
+    'Timestamp',
+    'Actor',
+    'Action',
+    'Question_ID',
+    'From_State',
+    'To_State',
+    'Meta'
+]);
+
+
+const SETTINGS_HEADERS = Object.freeze([
+    'PIN',
+    'Setting_Key',
+    'Setting_Value',
+    'Updated_At',
+    'Updated_By'
+]);
+
+
+const COL = Object.freeze({
+    ID: 1,
+    TIMESTAMP: 2,
+    PIN: 3,
+    QUESTION: 4,
+    SUBMITTED_BY: 5,
+    STATUS: 6,
+    MODERATOR_NAME: 7,
+    MOD_TIMESTAMP: 8,
+    REJECTION_REASON: 9
+});
+
+
+/* ============================================================================
+ * ONE-TIME / ADMINISTRATIVE FUNCTIONS
+ * ========================================================================== */
+
+/**
+ * Run once after installing this Code.gs.
+ *
+ * Creates or repairs the two required sheets and their headers.
+ * It does NOT delete existing question or audit data.
+ */
+function setupEHapot() {
+    const ss = getSpreadsheet_();
+
+    const questionSheet =
+        ss.getSheetByName(EHAPOT.QUESTION_SHEET) ||
+        ss.insertSheet(EHAPOT.QUESTION_SHEET);
+
+    const auditSheet =
+        ss.getSheetByName(EHAPOT.AUDIT_SHEET) ||
+        ss.insertSheet(EHAPOT.AUDIT_SHEET);
+
+    // v2.4.0: getSettingsSheet_() creates + formats Event_Settings itself
+    // (see SETTINGS HELPERS below), so setup and lazy first-use share the
+    // exact same creation logic instead of duplicating it here.
+    getSettingsSheet_();
+
+    questionSheet
+        .getRange(1, 1, 1, QUESTION_HEADERS.length)
+        .setValues([QUESTION_HEADERS]);
+
+    auditSheet
+        .getRange(1, 1, 1, AUDIT_HEADERS.length)
+        .setValues([AUDIT_HEADERS]);
+
+    formatHeader_(questionSheet, QUESTION_HEADERS.length);
+    formatHeader_(auditSheet, AUDIT_HEADERS.length);
+
+    questionSheet.setFrozenRows(1);
+    auditSheet.setFrozenRows(1);
+
+    questionSheet.setColumnWidth(COL.ID, 260);
+    questionSheet.setColumnWidth(COL.TIMESTAMP, 165);
+    questionSheet.setColumnWidth(COL.PIN, 90);
+    questionSheet.setColumnWidth(COL.QUESTION, 420);
+    questionSheet.setColumnWidth(COL.SUBMITTED_BY, 180);
+    questionSheet.setColumnWidth(COL.STATUS, 120);
+    questionSheet.setColumnWidth(COL.MODERATOR_NAME, 180);
+    questionSheet.setColumnWidth(COL.MOD_TIMESTAMP, 165);
+    questionSheet.setColumnWidth(COL.REJECTION_REASON, 300);
+
+    auditSheet.setColumnWidth(1, 165);
+    auditSheet.setColumnWidth(2, 180);
+    auditSheet.setColumnWidth(3, 140);
+    auditSheet.setColumnWidth(4, 260);
+    auditSheet.setColumnWidth(5, 120);
+    auditSheet.setColumnWidth(6, 120);
+    auditSheet.setColumnWidth(7, 420);
+
+    const statusValidation = SpreadsheetApp
+        .newDataValidation()
+        .requireValueInList(Object.values(STATES), true)
+        .setAllowInvalid(false)
+        .build();
+
+    questionSheet
+        .getRange(2, COL.STATUS, Math.max(questionSheet.getMaxRows() - 1, 1), 1)
+        .setDataValidation(statusValidation);
+
+    SpreadsheetApp.flush();
+
+    Logger.log('eHapot database setup complete.');
+    Logger.log('Version: ' + EHAPOT.VERSION);
+    Logger.log('Next: configure MODERATOR_SECRET in Script Properties.');
+}
+
+
+/**
+ * Diagnostic helper.
+ *
+ * Safe to run because it NEVER logs the actual moderator secret.
+ */
+function checkEHapotConfiguration() {
+    const props = PropertiesService
+        .getScriptProperties()
+        .getProperties();
+
+    const activeEventPin =
+        cleanString_(props.ACTIVE_EVENT_PIN, 20) || 'NOT SET (optional)';
+
+    const moderatorSecretConfigured =
+        Boolean(String(props.MODERATOR_SECRET || '').trim());
+
+    const legacyModeratorPinExists =
+        Boolean(String(props.MODERATOR_PIN || '').trim());
+
+    const result = {
+        version: EHAPOT.VERSION,
+        spreadsheetId: EHAPOT.SPREADSHEET_ID,
+        activeEventPin: activeEventPin,
+        activeEventPinRequired: false,
+        moderatorSecretConfigured: moderatorSecretConfigured,
+        legacyModeratorPinExists: legacyModeratorPinExists,
+        questionSheetExists:
+            Boolean(getSpreadsheet_().getSheetByName(EHAPOT.QUESTION_SHEET)),
+        auditSheetExists:
+            Boolean(getSpreadsheet_().getSheetByName(EHAPOT.AUDIT_SHEET))
+    };
+
+    Logger.log(JSON.stringify(result, null, 2));
+
+    if (!moderatorSecretConfigured) {
+        Logger.log(
+            'ACTION REQUIRED: Add MODERATOR_SECRET in Project Settings ? Script Properties.'
+        );
+    }
+
+    if (legacyModeratorPinExists) {
+        Logger.log(
+            'NOTE: MODERATOR_PIN is a legacy property and is NOT used by eHapot v2.2.0.'
+        );
+    }
+
+    return result;
+}
+
+
+/**
+ * OPTIONAL helper.
+ *
+ * Set ACTIVE_EVENT_PIN from this function only if you want to restrict the
+ * backend to one public event code at a time.
+ *
+ * Edit the value below before running the function.
+ */
+function configureActiveEventPin() {
+    const EVENT_PIN_TO_USE = '1234'; // <-- CHANGE THIS IF NEEDED.
+
+    if (!EHAPOT.EVENT_PIN_REGEX.test(EVENT_PIN_TO_USE)) {
+        throw new Error('Event PIN must contain 4-6 digits.');
+    }
+
+    PropertiesService
+        .getScriptProperties()
+        .setProperty('ACTIVE_EVENT_PIN', EVENT_PIN_TO_USE);
+
+    Logger.log('ACTIVE_EVENT_PIN set to: ' + EVENT_PIN_TO_USE);
+}
+
+
+/**
+ * OPTIONAL helper.
+ *
+ * Removes ACTIVE_EVENT_PIN so the backend accepts any valid 4-6 digit
+ * event PIN. Moderator actions remain protected by MODERATOR_SECRET.
+ */
+function removeActiveEventPinRestriction() {
+    PropertiesService
+        .getScriptProperties()
+        .deleteProperty('ACTIVE_EVENT_PIN');
+
+    Logger.log(
+        'ACTIVE_EVENT_PIN removed. Any valid 4-6 digit event PIN is now allowed.'
+    );
+}
+
+
+/**
+ * OPTIONAL admin/maintenance function (v2.3.0).
+ *
+ * Moves COMPLETED/REJECTED rows older than ARCHIVE_AFTER_DAYS out of
+ * QnA_Master into a QnA_Archive sheet (created on first run). Keeps the
+ * live moderator/projector queries fast as an event history grows, without
+ * ever deleting data - matches the "append-only, audit-obsessed" governance
+ * principle in the SDID.
+ *
+ * Run manually from the editor, or wire to a time-driven trigger via
+ * Edit ? Current project's triggers ? Add trigger ? archiveOldQuestions ?
+ * Time-driven ? Day timer.
+ */
+function archiveOldQuestions() {
+    const ARCHIVE_AFTER_DAYS = 14; // Adjust to taste.
+    const ARCHIVE_SHEET_NAME = 'QnA_Archive';
+
+    const ss = getSpreadsheet_();
+    const sheet = requireSheet_(ss, EHAPOT.QUESTION_SHEET);
+
+    const archiveSheet =
+        ss.getSheetByName(ARCHIVE_SHEET_NAME) ||
+        ss.insertSheet(ARCHIVE_SHEET_NAME);
+
+    if (archiveSheet.getLastRow() === 0) {
+        archiveSheet
+            .getRange(1, 1, 1, QUESTION_HEADERS.length)
+            .setValues([QUESTION_HEADERS]);
+        formatHeader_(archiveSheet, QUESTION_HEADERS.length);
+        archiveSheet.setFrozenRows(1);
+    }
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+        Logger.log('Nothing to archive.');
+        return;
+    }
+
+    const cutoff =
+        new Date(Date.now() - ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000);
+
+    const values =
+        sheet.getRange(2, 1, lastRow - 1, QUESTION_HEADERS.length).getValues();
+
+    const toArchive = [];
+    const rowsToDelete = [];
+
+    values.forEach(function (row, idx) {
+        const status = row[COL.STATUS - 1];
+        const rawTs = row[COL.TIMESTAMP - 1];
+        const ts = rawTs instanceof Date ? rawTs : new Date(rawTs);
+
+        const isDone =
+            status === STATES.COMPLETED || status === STATES.REJECTED;
+        const isOld = !Number.isNaN(ts.getTime()) && ts < cutoff;
+
+        if (isDone && isOld) {
+            toArchive.push(row);
+            rowsToDelete.push(idx + 2); // absolute sheet row number
+        }
+    });
+
+    if (!toArchive.length) {
+        Logger.log('No rows old enough to archive.');
+        return;
+    }
+
+    archiveSheet
+        .getRange(
+            archiveSheet.getLastRow() + 1,
+            1,
+            toArchive.length,
+            QUESTION_HEADERS.length
+        )
+        .setValues(toArchive);
+
+    // Delete bottom-to-top so earlier row numbers in the list stay valid.
+    rowsToDelete
+        .sort(function (a, b) { return b - a; })
+        .forEach(function (r) { sheet.deleteRow(r); });
+
+    Logger.log(
+        'Archived ' + toArchive.length + ' row(s) to ' + ARCHIVE_SHEET_NAME + '.'
+    );
+}
+
+
+/* ============================================================================
+ * WEB APP ROUTERS
+ * ========================================================================== */
+
+/**
+ * Public GET router.
+ *
+ * Supported actions:
+ * - health
+ * - getProjectorFeed
+ */
+function doGet(e) {
+    try {
+        const action = cleanString_(
+            e && e.parameter ? e.parameter.action : '',
+            50
+        );
+
+        switch (action) {
+            case 'health':
+                return jsonResponse_({
+                    ok: true,
+                    app: 'eHapot',
+                    version: EHAPOT.VERSION,
+                    time: new Date().toISOString()
+                });
+
+            case 'getProjectorFeed': {
+                const pin = validateEventPin_(
+                    e && e.parameter ? e.parameter.pin : ''
+                );
+
+                return jsonResponse_(getProjectorFeed_(pin));
+            }
+
+            default:
+                return jsonResponse_({
+                    ok: false,
+                    error: 'Invalid GET action.'
+                });
+        }
+
+    } catch (err) {
+        return jsonResponse_({
+            ok: false,
+            error: publicError_(err)
+        });
+    }
+}
+
+
+/**
+ * POST router.
+ *
+ * All frontend POST requests should use:
+ * Content-Type: text/plain;charset=UTF-8
+ *
+ * Supported actions:
+ * - submitQuestion
+ * - verifyModerator
+ * - getModeratorFeed
+ * - transitionQuestion
+ * - exportEventCsv      (moderator-authenticated, v2.3.0)
+ * - getQuestionStatus (audience, ID-scoped, v2.3.0)
+ * - setEventTitle       (moderator-authenticated, v2.4.0)
+ * - verifyAdmin         (moderator + admin-authenticated, v2.4.1)
+ * - setInstitutionLogo  (moderator-authenticated, v2.4.2, applies globally)
+ */
+function doPost(e) {
+    try {
+        const body = parseRequestBody_(e);
+
+        const action = cleanString_(
+            body.action,
+            50
+        );
+
+        switch (action) {
+            case 'submitQuestion':
+                return jsonResponse_(
+                    submitQuestion_(body)
+                );
+
+            case 'verifyModerator': {
+                const auth = verifyModerator_(body);
+
+                return jsonResponse_({
+                    ok: true,
+                    moderatorName: auth.moderatorName,
+                    pin: auth.pin
+                });
+            }
+
+            case 'getModeratorFeed': {
+                const auth = verifyModerator_(body);
+
+                return jsonResponse_(
+                    getModeratorFeed_(auth.pin)
+                );
+            }
+
+            case 'transitionQuestion': {
+                const auth = verifyModerator_(body);
+
+                return jsonResponse_(
+                    transitionQuestion_(body, auth)
+                );
+            }
+
+            case 'exportEventCsv': {
+                const auth = verifyModerator_(body);
+
+                return jsonResponse_(
+                    exportEventCsv_(auth.pin)
+                );
+            }
+
+            case 'getQuestionStatus':
+                return jsonResponse_(
+                    getQuestionStatus_(body)
+                );
+
+            case 'setEventTitle': {
+                const auth = verifyModerator_(body);
+
+                return jsonResponse_(
+                    setEventTitle_(body, auth)
+                );
+            }
+
+            case 'verifyAdmin': {
+                // Two-tier check by design: you must already hold a valid
+                // moderator session AND the separate admin password before
+                // the raw Sheet URL is ever handed back.
+                const auth = verifyModerator_(body);
+
+                return jsonResponse_(
+                    verifyAdmin_(body, auth)
+                );
+            }
+
+            case 'setInstitutionLogo': {
+                const auth = verifyModerator_(body);
+
+                return jsonResponse_(
+                    setInstitutionLogo_(body, auth)
+                );
+            }
+
+            default:
+                return jsonResponse_({
+                    ok: false,
+                    error: 'Invalid POST action.'
+                });
+        }
+
+    } catch (err) {
+        return jsonResponse_({
+            ok: false,
+            error: publicError_(err)
+        });
+    }
+}
+
+
+/* ============================================================================
+ * AUDIENCE SUBMISSION
+ * ========================================================================== */
+
+function submitQuestion_(body) {
+    const pin = validateEventPin_(body.pin);
+
+    const questionText = cleanString_(
+        body.text,
+        EHAPOT.MAX_QUESTION_LENGTH
+    );
+
+    const submittedBy =
+        cleanString_(
+            body.submittedBy || 'Anonymous',
+            EHAPOT.MAX_NAME_LENGTH
+        ) || 'Anonymous';
+
+    const clientId = cleanString_(
+        body.clientId,
+        120
+    );
+
+    if (
+        questionText.length < EHAPOT.MIN_QUESTION_LENGTH ||
+        questionText.length > EHAPOT.MAX_QUESTION_LENGTH
+    ) {
+        throw new Error(
+            'Question must contain ' +
+            EHAPOT.MIN_QUESTION_LENGTH +
+            '-' +
+            EHAPOT.MAX_QUESTION_LENGTH +
+            ' characters.'
+        );
+    }
+
+    if (!clientId) {
+        throw new Error('Missing client identifier.');
+    }
+
+    const lock = LockService.getScriptLock();
+    lock.waitLock(EHAPOT.LOCK_TIMEOUT_MS);
+
+    try {
+        const cache = CacheService.getScriptCache();
+
+        const rateLimitKey =
+            'rate:' +
+            hashKey_(pin + '|' + clientId);
+
+        if (cache.get(rateLimitKey)) {
+            throw new Error(
+                'Please wait before submitting another question.'
+            );
+        }
+
+        const ss = getSpreadsheet_();
+        const questionSheet =
+            requireSheet_(ss, EHAPOT.QUESTION_SHEET);
+
+        const questionId = Utilities.getUuid();
+        const now = new Date();
+
+        const row = [
+            questionId,
+            now,
+            pin,
+            questionText,
+            submittedBy,
+            STATES.PENDING,
+            '',
+            '',
+            ''
+        ];
+
+        const targetRow =
+            questionSheet.getLastRow() + 1;
+
+        questionSheet
+            .getRange(
+                targetRow,
+                1,
+                1,
+                QUESTION_HEADERS.length
+            )
+            .setValues([row]);
+
+        try {
+            appendAudit_(
+                ss,
+                'Audience',
+                'SUBMIT',
+                questionId,
+                'N/A',
+                STATES.PENDING,
+                {
+                    pin: pin
+                }
+            );
+
+        } catch (auditErr) {
+            // Preserve the non-negotiable rule that every accepted submission
+            // must have an audit record.
+            questionSheet.deleteRow(targetRow);
+
+            throw new Error(
+                'Submission was rolled back because the audit record could not be written.'
+            );
+        }
+
+        cache.put(
+            rateLimitKey,
+            '1',
+            EHAPOT.RATE_LIMIT_SECONDS
+        );
+
+        invalidateFeedCaches_(pin);
+
+        return {
+            ok: true,
+            id: questionId,
+            status: STATES.PENDING
+        };
+
+    } finally {
+        lock.releaseLock();
+    }
+}
+
+
+/* ============================================================================
+ * PUBLIC PROJECTOR FEED
+ * ========================================================================== */
+
+function getProjectorFeed_(pin) {
+    const cache =
+        CacheService.getScriptCache();
+
+    const cacheKey =
+        'projector:' + pin;
+
+    const cached =
+        cache.get(cacheKey);
+
+    if (cached) {
+        try {
+            return JSON.parse(cached);
+        } catch (_) {
+            cache.remove(cacheKey);
+        }
+    }
+
+    const rows =
+        readQuestionsByPin_(pin);
+
+    const onAir =
+        rows.find(function (q) {
+            return q.status === STATES.ON_AIR;
+        }) || null;
+
+    const onDeck =
+        rows.filter(function (q) {
+            return q.status === STATES.APPROVED;
+        });
+
+    const result = {
+        ok: true,
+        onAir: onAir,
+        onDeck: onDeck,
+        eventTitle: getEventSetting_(pin, 'eventTitle'),
+        logoUrl: getEventSetting_(EHAPOT.GLOBAL_SETTINGS_PIN, 'institutionLogoUrl')
+    };
+
+    safeCachePut_(
+        cache,
+        cacheKey,
+        result,
+        EHAPOT.FEED_CACHE_SECONDS
+    );
+
+    return result;
+}
+
+
+/* ============================================================================
+ * MODERATOR AUTHENTICATION
+ * ========================================================================== */
+
+function verifyModerator_(body) {
+    const pin =
+        validateEventPin_(body.pin);
+
+    const moderatorName =
+        cleanString_(
+            body.moderatorName,
+            EHAPOT.MAX_MODERATOR_NAME_LENGTH
+        );
+
+    const suppliedSecret =
+        String(
+            body.moderatorSecret || ''
+        );
+
+    if (moderatorName.length < 2) {
+        throw new Error(
+            'Enter a valid moderator name.'
+        );
+    }
+
+    const props =
+        PropertiesService.getScriptProperties();
+
+    const expectedSecret =
+        String(
+            props.getProperty('MODERATOR_SECRET') || ''
+        );
+
+    if (!expectedSecret) {
+        throw new Error(
+            'Server configuration error: MODERATOR_SECRET is not set.'
+        );
+    }
+
+    // Do not fall back to MODERATOR_PIN.
+    // The legacy property may be publicly exposed as an event PIN.
+    if (!constantTimeEquals_(
+        suppliedSecret,
+        expectedSecret
+    )) {
+        recordFailedLogin_(
+            pin,
+            moderatorName
+        );
+
+        throw new Error(
+            'Invalid moderator credentials.'
+        );
+    }
+
+    return {
+        pin: pin,
+        moderatorName: moderatorName
+    };
+}
+
+
+/**
+ * Second, independent credential tier (v2.4.1). Deliberately separate from
+ * MODERATOR_SECRET: a moderator can triage the queue all night without ever
+ * being able to open the underlying Sheet, unless they also hold this.
+ *
+ * Requires an already-valid moderator auth object (see the 'verifyAdmin'
+ * doPost case) so this never runs against an unauthenticated request, and
+ * so failed attempts can be attributed to a named moderator in the log.
+ */
+function verifyAdmin_(body, moderatorAuth) {
+    const suppliedSecret =
+        String(
+            body.adminSecret || ''
+        );
+
+    const props =
+        PropertiesService.getScriptProperties();
+
+    const expectedSecret =
+        String(
+            props.getProperty('ADMIN_SECRET') || ''
+        );
+
+    if (!expectedSecret) {
+        throw new Error(
+            'Server configuration error: ADMIN_SECRET is not set.'
+        );
+    }
+
+    if (!constantTimeEquals_(
+        suppliedSecret,
+        expectedSecret
+    )) {
+        recordFailedLogin_(
+            moderatorAuth.pin,
+            moderatorAuth.moderatorName + ' (admin)'
+        );
+
+        throw new Error(
+            'Invalid admin password.'
+        );
+    }
+
+    try {
+        appendAudit_(
+            getSpreadsheet_(),
+            moderatorAuth.moderatorName,
+            'ADMIN_SHEET_ACCESS',
+            'N/A',
+            'N/A',
+            'N/A',
+            { pin: moderatorAuth.pin }
+        );
+    } catch (auditErr) {
+        // Best-effort only, same rationale as setEventTitle_: this isn't
+        // part of the QnA state-machine audit trail, so a logging hiccup
+        // shouldn't block a legitimate admin from seeing the Sheet.
+    }
+
+    return {
+        ok: true,
+        sheetUrl: buildSheetUrl_()
+    };
+}
+
+
+function buildSheetUrl_() {
+    return (
+        'https://docs.google.com/spreadsheets/d/' +
+        EHAPOT.SPREADSHEET_ID +
+        '/edit'
+    );
+}
+
+
+/* ============================================================================
+ * MODERATOR FEED
+ * ========================================================================== */
+
+function getModeratorFeed_(pin) {
+    const cache =
+        CacheService.getScriptCache();
+
+    const cacheKey =
+        'moderator:' + pin;
+
+    const cached =
+        cache.get(cacheKey);
+
+    if (cached) {
+        try {
+            return JSON.parse(cached);
+        } catch (_) {
+            cache.remove(cacheKey);
+        }
+    }
+
+    const rows =
+        readQuestionsByPin_(pin);
+
+    const pending =
+        rows.filter(function (q) {
+            return q.status === STATES.PENDING;
+        });
+
+    const onDeck =
+        rows.filter(function (q) {
+            return q.status === STATES.APPROVED;
+        });
+
+    const onAir =
+        rows.find(function (q) {
+            return q.status === STATES.ON_AIR;
+        }) || null;
+
+    const recentCompleted =
+        rows
+            .filter(function (q) {
+                return q.status === STATES.COMPLETED;
+            })
+            .slice(-10)
+            .reverse();
+
+    const result = {
+        ok: true,
+        pending: pending,
+        onDeck: onDeck,
+        onAir: onAir,
+        recentCompleted: recentCompleted,
+        eventTitle: getEventSetting_(pin, 'eventTitle'),
+        logoUrl: getEventSetting_(EHAPOT.GLOBAL_SETTINGS_PIN, 'institutionLogoUrl')
+    };
+
+    safeCachePut_(
+        cache,
+        cacheKey,
+        result,
+        EHAPOT.FEED_CACHE_SECONDS
+    );
+
+    return result;
+}
+
+
+/* ============================================================================
+ * STATE-MACHINE TRANSITIONS
+ * ========================================================================== */
+
+function transitionQuestion_(body, auth) {
+    const questionId =
+        cleanString_(
+            body.questionId,
+            100
+        );
+
+    const targetState =
+        cleanString_(
+            body.toState,
+            30
+        ).toUpperCase();
+
+    const rejectionReason =
+        cleanString_(
+            body.reason,
+            EHAPOT.MAX_REJECTION_REASON_LENGTH
+        );
+
+    if (!questionId) {
+        throw new Error(
+            'Missing question ID.'
+        );
+    }
+
+    if (
+        !Object.values(STATES)
+            .includes(targetState)
+    ) {
+        throw new Error(
+            'Invalid target state.'
+        );
+    }
+
+    const allowedTransitions = Object.freeze({
+        PENDING: [
+            STATES.APPROVED,
+            STATES.REJECTED
+        ],
+
+        APPROVED: [
+            STATES.ON_AIR,
+            STATES.REJECTED
+        ],
+
+        ON_AIR: [
+            STATES.COMPLETED
+        ],
+
+        COMPLETED: [],
+
+        REJECTED: []
+    });
+
+    const lock =
+        LockService.getScriptLock();
+
+    lock.waitLock(
+        EHAPOT.LOCK_TIMEOUT_MS
+    );
+
+    try {
+        const ss =
+            getSpreadsheet_();
+
+        const sheet =
+            requireSheet_(
+                ss,
+                EHAPOT.QUESTION_SHEET
+            );
+
+        const found =
+            findQuestionById_(
+                sheet,
+                questionId
+            );
+
+        if (!found) {
+            throw new Error(
+                'Question not found.'
+            );
+        }
+
+        const rowNumber =
+            found.rowNumber;
+
+        const originalRow =
+            found.values.slice();
+
+        const currentQuestion =
+            rowToQuestion_(originalRow);
+
+        if (
+            currentQuestion.pin !== auth.pin
+        ) {
+            throw new Error(
+                'Question belongs to a different event.'
+            );
+        }
+
+        const validTargets =
+            allowedTransitions[
+                currentQuestion.status
+            ] || [];
+
+        if (
+            !validTargets.includes(targetState)
+        ) {
+            throw new Error(
+                'Invalid transition: ' +
+                currentQuestion.status +
+                ' ? ' +
+                targetState +
+                '.'
+            );
+        }
+
+        // Enforce exactly one ON_AIR question per event.
+        if (
+            targetState === STATES.ON_AIR
+        ) {
+            const eventRows =
+                readQuestionsByPin_(auth.pin);
+
+            const existingOnAir =
+                eventRows.find(function (q) {
+                    return (
+                        q.status === STATES.ON_AIR &&
+                        q.id !== questionId
+                    );
+                });
+
+            if (existingOnAir) {
+                throw new Error(
+                    'There is already a question ON_AIR. Complete it first.'
+                );
+            }
+        }
+
+        const updatedRow =
+            originalRow.slice();
+
+        updatedRow[
+            COL.STATUS - 1
+        ] = targetState;
+
+        updatedRow[
+            COL.MODERATOR_NAME - 1
+        ] = auth.moderatorName;
+
+        updatedRow[
+            COL.MOD_TIMESTAMP - 1
+        ] = new Date();
+
+        updatedRow[
+            COL.REJECTION_REASON - 1
+        ] =
+            targetState === STATES.REJECTED
+                ? rejectionReason
+                : '';
+
+        sheet
+            .getRange(
+                rowNumber,
+                1,
+                1,
+                QUESTION_HEADERS.length
+            )
+            .setValues([updatedRow]);
+
+        try {
+            appendAudit_(
+                ss,
+                auth.moderatorName,
+                'TRANSITION',
+                questionId,
+                currentQuestion.status,
+                targetState,
+                {
+                    pin: auth.pin,
+                    reason:
+                        targetState === STATES.REJECTED
+                            ? rejectionReason
+                            : ''
+                }
+            );
+
+        } catch (auditErr) {
+            // Roll the state change back if audit logging fails.
+            sheet
+                .getRange(
+                    rowNumber,
+                    1,
+                    1,
+                    QUESTION_HEADERS.length
+                )
+                .setValues([originalRow]);
+
+            throw new Error(
+                'State change was rolled back because the audit record could not be written.'
+            );
+        }
+
+        invalidateFeedCaches_(
+            auth.pin
+        );
+
+        // v2.3.0: return the fresh moderator feed in the same response so the
+        // client doesn't need a second round trip just to re-render the columns.
+        return {
+            ok: true,
+            id: questionId,
+            fromState:
+                currentQuestion.status,
+            toState:
+                targetState,
+            feed:
+                getModeratorFeed_(auth.pin)
+        };
+
+    } finally {
+        lock.releaseLock();
+    }
+}
+
+
+/* ============================================================================
+ * EVENT EXPORT (v2.3.0)
+ * ========================================================================== */
+
+/**
+ * Produces a CSV snapshot of every question row for one event PIN.
+ * Moderator-authenticated. Returned as a JSON string field (not a file),
+ * so the frontend builds the downloadable Blob client-side.
+ */
+function exportEventCsv_(pin) {
+    const rows = readQuestionsByPin_(pin);
+
+    const header = [
+        'ID', 'Timestamp', 'PIN', 'Question', 'Submitted By',
+        'Status', 'Moderator', 'Mod Timestamp', 'Rejection Reason'
+    ];
+
+    const lines = [header.map(csvEscape_).join(',')];
+
+    rows.forEach(function (q) {
+        lines.push([
+            q.id,
+            q.timestamp,
+            q.pin,
+            q.text,
+            q.submittedBy,
+            q.status,
+            q.moderatorName,
+            q.modTimestamp,
+            q.rejectionReason
+        ].map(csvEscape_).join(','));
+    });
+
+    return {
+        ok: true,
+        pin: pin,
+        count: rows.length,
+        csv: lines.join('\r\n')
+    };
+}
+
+
+function csvEscape_(value) {
+    const str = String(value == null ? '' : value);
+    if (/[",\r\n]/.test(str)) {
+        return '"' + str.replace(/"/g, '""') + '"';
+    }
+    return str;
+}
+
+
+/* ============================================================================
+ * AUDIENCE-FACING QUESTION STATUS (v2.3.0)
+ * ========================================================================== */
+
+/**
+ * Lets an audience member check the status of ONE question they submitted,
+ * by its ID (returned to them at submission time and kept in their own
+ * browser storage). No moderator secret required, and no way to enumerate
+ * or browse other people's questions - the ID itself is the capability.
+ */
+function getQuestionStatus_(body) {
+    const pin = validateEventPin_(body.pin);
+
+    const questionId = cleanString_(body.questionId, 100);
+    if (!questionId) {
+        throw new Error('Missing question ID.');
+    }
+
+    const ss = getSpreadsheet_();
+    const sheet = requireSheet_(ss, EHAPOT.QUESTION_SHEET);
+    const found = findQuestionById_(sheet, questionId);
+
+    if (!found) {
+        throw new Error('Question not found.');
+    }
+
+    const question = rowToQuestion_(found.values);
+
+    if (question.pin !== pin) {
+        // Don't distinguish "wrong event" from "not found" - avoids leaking
+        // whether an ID exists under a different PIN.
+        throw new Error('Question not found.');
+    }
+
+    return {
+        ok: true,
+        id: question.id,
+        status: question.status,
+        rejectionReason:
+            question.status === STATES.REJECTED
+                ? question.rejectionReason
+                : ''
+    };
+}
+
+
+/* ============================================================================
+ * EVENT SETTINGS (v2.4.0)
+ * ========================================================================== */
+
+/**
+ * Moderator-authenticated. Persists the event title per PIN so it's visible
+ * to every moderator/projector for the event, not just one browser tab.
+ *
+ * Unlike submitQuestion_/transitionQuestion_, a failed audit write here is
+ * logged but does NOT roll the title change back - the audit trail's
+ * non-negotiable-integrity rule is specifically about the QnA state
+ * machine (what was asked, approved, shown, rejected), not cosmetic event
+ * configuration, so a display-label update shouldn't be blocked by it.
+ */
+function setEventTitle_(body, auth) {
+    const title = cleanString_(
+        body.title,
+        EHAPOT.MAX_EVENT_TITLE_LENGTH
+    );
+
+    const lock = LockService.getScriptLock();
+    lock.waitLock(EHAPOT.LOCK_TIMEOUT_MS);
+
+    try {
+        setEventSetting_(
+            auth.pin,
+            'eventTitle',
+            title,
+            auth.moderatorName
+        );
+
+        invalidateFeedCaches_(auth.pin);
+
+        try {
+            appendAudit_(
+                getSpreadsheet_(),
+                auth.moderatorName,
+                'SET_EVENT_TITLE',
+                'N/A',
+                'N/A',
+                'N/A',
+                { pin: auth.pin, title: title }
+            );
+        } catch (auditErr) {
+            // Best-effort only - see function comment above.
+        }
+
+    } finally {
+        lock.releaseLock();
+    }
+
+    return {
+        ok: true,
+        eventTitle: title
+    };
+}
+
+
+/**
+ * Moderator-authenticated, but deliberately NOT scoped to the current
+ * event PIN - stored under EHAPOT.GLOBAL_SETTINGS_PIN so one save applies
+ * to every event's projector/PDF branding, not just the one the acting
+ * moderator happens to be logged into. Same best-effort-audit rationale
+ * as setEventTitle_: a logging hiccup shouldn't block a legitimate save.
+ */
+function setInstitutionLogo_(body, auth) {
+    const logoUrl = cleanString_(
+        body.logoUrl,
+        EHAPOT.MAX_LOGO_URL_LENGTH
+    );
+
+    const lock = LockService.getScriptLock();
+    lock.waitLock(EHAPOT.LOCK_TIMEOUT_MS);
+
+    try {
+        setEventSetting_(
+            EHAPOT.GLOBAL_SETTINGS_PIN,
+            'institutionLogoUrl',
+            logoUrl,
+            auth.moderatorName
+        );
+
+        // Only the acting moderator's own current-event cache needs an
+        // immediate refresh for their own view; every other active
+        // event's feed cache self-expires within FEED_CACHE_SECONDS
+        // anyway, so there's no need to try to enumerate and clear them.
+        invalidateFeedCaches_(auth.pin);
+
+        try {
+            appendAudit_(
+                getSpreadsheet_(),
+                auth.moderatorName,
+                'SET_INSTITUTION_LOGO',
+                'N/A',
+                'N/A',
+                'N/A',
+                { logoUrl: logoUrl }
+            );
+        } catch (auditErr) {
+            // Best-effort only - see function comment above.
+        }
+
+    } finally {
+        lock.releaseLock();
+    }
+
+    return {
+        ok: true,
+        logoUrl: logoUrl
+    };
+}
+
+
+/**
+ * Returns the sheet, creating and formatting it on first use so a fleet
+ * that's already been running setupEHapot() before v2.4.0 doesn't need a
+ * manual migration step.
+ */
+function getSettingsSheet_() {
+    const ss = getSpreadsheet_();
+
+    let sheet = ss.getSheetByName(EHAPOT.SETTINGS_SHEET);
+
+    if (!sheet) {
+        sheet = ss.insertSheet(EHAPOT.SETTINGS_SHEET);
+
+        sheet
+            .getRange(1, 1, 1, SETTINGS_HEADERS.length)
+            .setValues([SETTINGS_HEADERS]);
+
+        formatHeader_(sheet, SETTINGS_HEADERS.length);
+        sheet.setFrozenRows(1);
+
+        sheet.setColumnWidth(1, 90);
+        sheet.setColumnWidth(2, 150);
+        sheet.setColumnWidth(3, 320);
+        sheet.setColumnWidth(4, 165);
+        sheet.setColumnWidth(5, 180);
+    }
+
+    return sheet;
+}
+
+
+/**
+ * One row per (PIN, Setting_Key) pair. Small table, read in full and
+ * filtered in memory - simpler than TextFinder for a two-column lookup
+ * and the settings sheet is expected to stay tiny (a handful of keys per
+ * concurrently-active event).
+ */
+function getEventSetting_(pin, key) {
+    const sheet = getSettingsSheet_();
+    const lastRow = sheet.getLastRow();
+
+    if (lastRow < 2) {
+        return '';
+    }
+
+    const values =
+        sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+
+    for (let i = 0; i < values.length; i++) {
+        if (
+            String(values[i][0]) === pin &&
+            String(values[i][1]) === key
+        ) {
+            return String(values[i][2] || '');
+        }
+    }
+
+    return '';
+}
+
+
+function setEventSetting_(pin, key, value, actor) {
+    const sheet = getSettingsSheet_();
+    const lastRow = sheet.getLastRow();
+    const now = new Date();
+
+    if (lastRow >= 2) {
+        const keys =
+            sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+
+        for (let i = 0; i < keys.length; i++) {
+            if (
+                String(keys[i][0]) === pin &&
+                String(keys[i][1]) === key
+            ) {
+                sheet
+                    .getRange(i + 2, 3, 1, 3)
+                    .setValues([[value, now, actor]]);
+                return;
+            }
+        }
+    }
+
+    const targetRow = sheet.getLastRow() + 1;
+
+    sheet
+        .getRange(targetRow, 1, 1, SETTINGS_HEADERS.length)
+        .setValues([[pin, key, value, now, actor]]);
+}
+
+
+/* ============================================================================
+ * AUDIT LOGGING
+ * ========================================================================== */
+
+function appendAudit_(
+    ss,
+    actor,
+    action,
+    questionId,
+    fromState,
+    toState,
+    meta
+) {
+    const auditSheet =
+        requireSheet_(
+            ss,
+            EHAPOT.AUDIT_SHEET
+        );
+
+    auditSheet.appendRow([
+        new Date(),
+        cleanString_(actor, 100),
+        cleanString_(action, 50),
+        cleanString_(questionId, 100),
+        cleanString_(fromState, 30),
+        cleanString_(toState, 30),
+        JSON.stringify(meta || {})
+    ]);
+}
+
+
+/**
+ * Logs invalid moderator attempts while avoiding unlimited log spam.
+ */
+function recordFailedLogin_(
+    pin,
+    moderatorName
+) {
+    const cache =
+        CacheService.getScriptCache();
+
+    const throttleKey =
+        'failed-login:' +
+        hashKey_(
+            pin + '|' + moderatorName
+        );
+
+    if (cache.get(throttleKey)) {
+        return;
+    }
+
+    const lock =
+        LockService.getScriptLock();
+
+    if (!lock.tryLock(3000)) {
+        return;
+    }
+
+    try {
+        const ss =
+            getSpreadsheet_();
+
+        appendAudit_(
+            ss,
+            moderatorName || 'Unknown',
+            'FAILED_LOGIN',
+            'N/A',
+            'N/A',
+            'N/A',
+            {
+                pin: pin
+            }
+        );
+
+        cache.put(
+            throttleKey,
+            '1',
+            60
+        );
+
+    } catch (_) {
+        // Never disclose internal logging errors to an unauthenticated user.
+    } finally {
+        lock.releaseLock();
+    }
+}
+
+
+/* ============================================================================
+ * DATABASE READ HELPERS
+ * ========================================================================== */
+
+/**
+ * Retrieves questions for one event PIN.
+ *
+ * Uses TextFinder instead of reading the entire question table into memory.
+ */
+function readQuestionsByPin_(pin) {
+    const ss =
+        getSpreadsheet_();
+
+    const sheet =
+        requireSheet_(
+            ss,
+            EHAPOT.QUESTION_SHEET
+        );
+
+    const lastRow =
+        sheet.getLastRow();
+
+    if (lastRow < 2) {
+        return [];
+    }
+
+    const pinRange =
+        sheet.getRange(
+            2,
+            COL.PIN,
+            lastRow - 1,
+            1
+        );
+
+    const matches =
+        pinRange
+            .createTextFinder(pin)
+            .matchEntireCell(true)
+            .findAll();
+
+    if (!matches.length) {
+        return [];
+    }
+
+    const rowNumbers =
+        matches
+            .map(function (cell) {
+                return cell.getRow();
+            })
+            .sort(function (a, b) {
+                return a - b;
+            });
+
+    const minRow =
+        rowNumbers[0];
+
+    const maxRow =
+        rowNumbers[
+            rowNumbers.length - 1
+        ];
+
+    const desiredRows =
+        new Set(rowNumbers);
+
+    const values =
+        sheet
+            .getRange(
+                minRow,
+                1,
+                maxRow - minRow + 1,
+                QUESTION_HEADERS.length
+            )
+            .getValues();
+
+    const result = [];
+
+    for (
+        let index = 0;
+        index < values.length;
+        index++
+    ) {
+        const absoluteRow =
+            minRow + index;
+
+        if (
+            desiredRows.has(absoluteRow)
+        ) {
+            result.push(
+                rowToQuestion_(
+                    values[index]
+                )
+            );
+        }
+    }
+
+    return result;
+}
+
+
+/**
+ * Finds one question by UUID.
+ */
+function findQuestionById_(
+    sheet,
+    questionId
+) {
+    const lastRow =
+        sheet.getLastRow();
+
+    if (lastRow < 2) {
+        return null;
+    }
+
+    const match =
+        sheet
+            .getRange(
+                2,
+                COL.ID,
+                lastRow - 1,
+                1
+            )
+            .createTextFinder(questionId)
+            .matchEntireCell(true)
+            .findNext();
+
+    if (!match) {
+        return null;
+    }
+
+    const rowNumber =
+        match.getRow();
+
+    const values =
+        sheet
+            .getRange(
+                rowNumber,
+                1,
+                1,
+                QUESTION_HEADERS.length
+            )
+            .getValues()[0];
+
+    return {
+        rowNumber: rowNumber,
+        values: values
+    };
+}
+
+
+/**
+ * Converts one QnA_Master row into the JSON structure expected by
+ * projector.html and moderator.html.
+ */
+function rowToQuestion_(row) {
+    return {
+        id:
+            String(
+                row[COL.ID - 1] || ''
+            ),
+
+        timestamp:
+            toIsoString_(
+                row[COL.TIMESTAMP - 1]
+            ),
+
+        pin:
+            String(
+                row[COL.PIN - 1] || ''
+            ),
+
+        text:
+            String(
+                row[COL.QUESTION - 1] || ''
+            ),
+
+        submittedBy:
+            String(
+                row[COL.SUBMITTED_BY - 1] ||
+                'Anonymous'
+            ),
+
+        status:
+            String(
+                row[COL.STATUS - 1] || ''
+            ),
+
+        moderatorName:
+            String(
+                row[
+                    COL.MODERATOR_NAME - 1
+                ] || ''
+            ),
+
+        modTimestamp:
+            toIsoString_(
+                row[
+                    COL.MOD_TIMESTAMP - 1
+                ]
+            ),
+
+        rejectionReason:
+            String(
+                row[
+                    COL.REJECTION_REASON - 1
+                ] || ''
+            )
+    };
+}
+
+
+/* ============================================================================
+ * EVENT-PIN VALIDATION
+ * ========================================================================== */
+
+/**
+ * Validates the public event PIN.
+ *
+ * IMPORTANT:
+ * ACTIVE_EVENT_PIN is OPTIONAL in v2.2.0.
+ *
+ * If ACTIVE_EVENT_PIN exists:
+ *      only that PIN is accepted.
+ *
+ * If ACTIVE_EVENT_PIN does not exist:
+ *      any valid 4-6 digit event PIN is accepted.
+ */
+function validateEventPin_(value) {
+    const pin =
+        cleanString_(
+            value,
+            6
+        );
+
+    if (
+        !EHAPOT.EVENT_PIN_REGEX.test(pin)
+    ) {
+        throw new Error(
+            'Invalid event code.'
+        );
+    }
+
+    const activePin =
+        cleanString_(
+            PropertiesService
+                .getScriptProperties()
+                .getProperty(
+                    'ACTIVE_EVENT_PIN'
+                ),
+            6
+        );
+
+    if (
+        activePin &&
+        pin !== activePin
+    ) {
+        throw new Error(
+            'This event code is not active.'
+        );
+    }
+
+    return pin;
+}
+
+
+/* ============================================================================
+ * CACHE HELPERS
+ * ========================================================================== */
+
+function invalidateFeedCaches_(pin) {
+    const cache =
+        CacheService.getScriptCache();
+
+    cache.remove(
+        'projector:' + pin
+    );
+
+    cache.remove(
+        'moderator:' + pin
+    );
+}
+
+
+/**
+ * Cache is an optimization only.
+ * A cache failure must never cause a successful database read to fail.
+ */
+function safeCachePut_(
+    cache,
+    key,
+    value,
+    ttlSeconds
+) {
+    try {
+        const serialized =
+            JSON.stringify(value);
+
+        const byteLength =
+            Utilities
+                .newBlob(serialized)
+                .getBytes()
+                .length;
+
+        if (
+            byteLength <
+            EHAPOT.MAX_CACHE_BYTES
+        ) {
+            cache.put(
+                key,
+                serialized,
+                ttlSeconds
+            );
+        }
+
+    } catch (_) {
+        // Intentionally ignored.
+    }
+}
+
+
+/* ============================================================================
+ * GENERAL HELPERS
+ * ========================================================================== */
+
+function getSpreadsheet_() {
+    return SpreadsheetApp.openById(
+        EHAPOT.SPREADSHEET_ID
+    );
+}
+
+
+function requireSheet_(
+    ss,
+    sheetName
+) {
+    const sheet =
+        ss.getSheetByName(
+            sheetName
+        );
+
+    if (!sheet) {
+        throw new Error(
+            'Missing required sheet: ' +
+            sheetName +
+            '. Run setupEHapot().'
+        );
+    }
+
+    return sheet;
+}
+
+
+function parseRequestBody_(e) {
+    const raw =
+        e &&
+        e.postData &&
+        e.postData.contents
+            ? e.postData.contents
+            : '';
+
+    if (!raw) {
+        throw new Error(
+            'Empty request body.'
+        );
+    }
+
+    try {
+        return JSON.parse(raw);
+
+    } catch (_) {
+        throw new Error(
+            'Invalid JSON request.'
+        );
+    }
+}
+
+
+function cleanString_(
+    value,
+    maxLength
+) {
+    return String(
+        value == null
+            ? ''
+            : value
+    )
+        .replace(/\u0000/g, '')
+        .trim()
+        .slice(
+            0,
+            maxLength || 1000
+        );
+}
+
+
+function toIsoString_(value) {
+    if (!value) {
+        return '';
+    }
+
+    const date =
+        value instanceof Date
+            ? value
+            : new Date(value);
+
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+        return '';
+    }
+
+    return date.toISOString();
+}
+
+
+function hashKey_(text) {
+    const digest =
+        Utilities.computeDigest(
+            Utilities.DigestAlgorithm.SHA_256,
+            String(text),
+            Utilities.Charset.UTF_8
+        );
+
+    return Utilities
+        .base64EncodeWebSafe(digest)
+        .replace(/=+$/g, '');
+}
+
+
+/**
+ * Avoids a direct early-return equality comparison for moderator secrets.
+ *
+ * Apps Script is not a cryptographic authentication server, but this keeps
+ * comparison behavior more uniform than a simple === check.
+ */
+function constantTimeEquals_(
+    supplied,
+    expected
+) {
+    const a =
+        String(supplied || '');
+
+    const b =
+        String(expected || '');
+
+    const maxLength =
+        Math.max(
+            a.length,
+            b.length
+        );
+
+    let diff =
+        a.length ^ b.length;
+
+    for (
+        let i = 0;
+        i < maxLength;
+        i++
+    ) {
+        const charA =
+            i < a.length
+                ? a.charCodeAt(i)
+                : 0;
+
+        const charB =
+            i < b.length
+                ? b.charCodeAt(i)
+                : 0;
+
+        diff |=
+            charA ^ charB;
+    }
+
+    return diff === 0;
+}
+
+
+function publicError_(err) {
+    const message =
+        err && err.message
+            ? String(err.message)
+            : 'Unexpected server error.';
+
+    return message.slice(
+        0,
+        300
+    );
+}
+
+
+function jsonResponse_(object) {
+    return ContentService
+        .createTextOutput(
+            JSON.stringify(object)
+        )
+        .setMimeType(
+            ContentService.MimeType.JSON
+        );
+}
+
+
+function formatHeader_(
+    sheet,
+    columnCount
+) {
+    sheet
+        .getRange(
+            1,
+            1,
+            1,
+            columnCount
+        )
+        .setFontWeight('bold')
+        .setBackground('#0A2B4E')
+        .setFontColor('#FFFFFF')
+        .setHorizontalAlignment('center')
+        .setVerticalAlignment('middle')
+        .setWrap(true);
+}
