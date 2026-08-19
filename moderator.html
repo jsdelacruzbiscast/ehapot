@@ -892,8 +892,13 @@
     const HEAD_Y = 98; // where the table starts below the repeated header block
 
     // Logo sized to a fixed height, width derived from its own aspect
-    // ratio (capped) so it never stretches or squashes.
-    const LOGO_MAX_H = 34, LOGO_MAX_W = 100;
+    // ratio (capped) so it never stretches or squashes. Sized to roughly
+    // match the wordmark+subtitle text block's own height (~30pt) rather
+    // than dominating it, and vertically centered against that block
+    // (baselines at y=38/y=52) — a fixed top offset made a square/tall
+    // logo visually "float" above the text instead of sitting level with
+    // it, which is what showed up in the reference screenshot.
+    const LOGO_MAX_H = 30, LOGO_MAX_W = 90;
     let logoW = 0, logoH = 0;
     if (logo) {
       logoH = LOGO_MAX_H;
@@ -901,10 +906,12 @@
       if (logoW > LOGO_MAX_W) { logoW = LOGO_MAX_W; logoH = (logo.h / logo.w) * logoW; }
     }
     const textX = logo ? margin + logoW + 12 : margin;
+    const TEXT_BLOCK_CENTER_Y = 39; // midpoint between wordmark cap-height top (~24) and subtitle descender bottom (~54)
+    const logoY = TEXT_BLOCK_CENTER_Y - logoH / 2;
 
     function drawHeader() {
       if (logo) {
-        doc.addImage(logo.dataUrl, logo.format, margin, 12, logoW, logoH);
+        doc.addImage(logo.dataUrl, logo.format, margin, logoY, logoW, logoH);
       }
 
       // App wordmark, top-left (shifted right of the logo, if present).
