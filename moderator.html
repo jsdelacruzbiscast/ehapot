@@ -653,35 +653,128 @@
 
   function buildPdfReport(csvText) {
     const rows = csvToRows(csvText);
-    const header = rows[0] || [];
-    const body = rows.slice(1);
-    const title = eventTitleInput.value.trim() || `Event ${eventPin}`;
+    const csvHeader = rows[0] || [];
+    const csvBody = rows.slice(1);
 
-    const doc = new jspdf.jsPDF({ orientation: 'landscape' });
+    // Look up columns by name rather than position, so this keeps working
+    // even if exportEventCsv_'s column order ever changes.
+    const col = name => csvHeader.indexOf(name);
+    const idx = {
+      timestamp: col('Timestamp'),
+      question: col('Question'),
+      status: col('Status'),
+      modTimestamp: col('Mod Timestamp'),
+      rejectionReason: col('Rejection Reason')
+    };
+
+    const tableBody = csvBody.map(r => [
+      r[idx.timestamp] || '',
+      r[idx.question] || '',
+      r[idx.status] || '',
+      r[idx.modTimestamp] || '',
+      r[idx.rejectionReason] || ''
+    ]);
+
+    const eventName = eventTitleInput.value.trim() || `Event ${eventPin}`;
+    const reportDate = new Date().toLocaleString();
+
+    const doc = new jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 40;
+    const HEAD_Y = 98; // where the table starts below the repeated header block
 
-    doc.setFontSize(18);
-    doc.setTextColor(10, 43, 78); // navy
-    doc.text('eHapot Q&A Report', 40, 42);
+    function drawHeader() {
+      // App wordmark, top-left.
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(10, 43, 78); // navy
+      doc.text('eHapot', margin, 38);
 
-    doc.setFontSize(11);
-    doc.setTextColor(90, 100, 115);
-    doc.text(title, 40, 60);
-    doc.text(
-      `Event PIN ${eventPin} · Generated ${new Date().toLocaleString()} · ${body.length} question${body.length === 1 ? '' : 's'}`,
-      40, 76
-    );
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(140, 148, 163);
+      doc.text('Interactive Q&A Engine · BISCAST SDS', margin, 52);
+
+      // Event name, second line, left.
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(30, 40, 55);
+      doc.text(`Event: ${eventName}`, margin, 74);
+
+      // Date + meta, top-right.
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(110, 120, 135);
+      doc.text(`Generated: ${reportDate}`, pageWidth - margin, 38, { align: 'right' });
+      doc.text(
+        `Event PIN ${eventPin} · ${tableBody.length} question${tableBody.length === 1 ? '' : 's'}`,
+        pageWidth - margin, 52, { align: 'right' }
+      );
+
+      // Gold brand rule under the header block.
+      doc.setDrawColor(212, 160, 23);
+      doc.setLineWidth(1.3);
+      doc.line(margin, 84, pageWidth - margin, 84);
+    }
+
+    function drawFooter() {
+      const pageNum = doc.internal.getNumberOfPages();
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(160, 168, 180);
+      doc.text('eHapot · BISCAST Student Development Services', margin, pageHeight - 20);
+      doc.text(`Page ${pageNum}`, pageWidth - margin, pageHeight - 20, { align: 'right' });
+    }
+
+    // Fixed widths for every column except Question, which absorbs the rest
+    // of the row — keeps the table legible instead of relying on autoTable
+    // to guess a sensible split.
+    const fixedWidths = { timestamp: 92, status: 68, modTimestamp: 92, rejectionReason: 150 };
+    const usableWidth = pageWidth - margin * 2;
+    const questionWidth = usableWidth - (fixedWidths.timestamp + fixedWidths.status + fixedWidths.modTimestamp + fixedWidths.rejectionReason);
 
     doc.autoTable({
-      head: [header],
-      body: body,
-      startY: 92,
-      margin: { left: 40, right: 40 },
-      styles: { fontSize: 8.5, cellPadding: 5, overflow: 'linebreak' },
-      headStyles: { fillColor: [10, 43, 78], textColor: 255, fontStyle: 'bold' },
+      head: [['Timestamp', 'Question', 'Status', 'Mod Timestamp', 'Rejection Reason']],
+      body: tableBody,
+      startY: HEAD_Y,
+      margin: { left: margin, right: margin, top: HEAD_Y, bottom: 46 },
+      styles: { fontSize: 8.5, cellPadding: 6, overflow: 'linebreak', valign: 'top', textColor: [40, 48, 60] },
+      headStyles: { fillColor: [10, 43, 78], textColor: 255, fontStyle: 'bold', fontSize: 9 },
       alternateRowStyles: { fillColor: [244, 247, 252] },
-      columnStyles: { 3: { cellWidth: pageWidth * 0.28 } } // Question column gets extra room
+      columnStyles: {
+        0: { cellWidth: fixedWidths.timestamp },
+        1: { cellWidth: questionWidth },
+        2: { cellWidth: fixedWidths.status },
+        3: { cellWidth: fixedWidths.modTimestamp },
+        4: { cellWidth: fixedWidths.rejectionReason }
+      },
+      didDrawPage: () => {
+        drawHeader();
+        drawFooter();
+      }
     });
+
+    // Signature block at the true end of the report — add a fresh page if
+    // there isn't comfortable room left on the last table page.
+    let sigY = (doc.lastAutoTable ? doc.lastAutoTable.finalY : HEAD_Y) + 56;
+    if (sigY > pageHeight - 90) {
+      doc.addPage();
+      drawHeader();
+      drawFooter();
+      sigY = HEAD_Y + 40;
+    }
+
+    doc.setDrawColor(120, 128, 140);
+    doc.setLineWidth(0.8);
+    doc.line(margin, sigY, margin + 260, sigY);
+    doc.line(pageWidth - margin - 200, sigY, pageWidth - margin, sigY);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(70, 80, 95);
+    doc.text('Moderator Signature over Printed Name', margin, sigY + 14);
+    doc.text('Date', pageWidth - margin - 200, sigY + 14);
 
     doc.save(`eHapot_${eventPin}_${new Date().toISOString().slice(0,10)}.pdf`);
   }
