@@ -167,21 +167,11 @@
           </div>
         </div>
       </div>
-
-      <div class="title-bar" id="logoBar" style="margin-top:12px">
-        <label for="logoUrlInput">🏫 Institution Logo</label>
-        <input id="logoUrlInput" type="url" maxlength="300"
-               placeholder="https://jsdelacruzbiscast.github.io/ehapot/assets/biscast-logo.png">
-        <img id="logoPreview" alt="" hidden style="width:28px;height:28px;object-fit:contain;border-radius:6px">
-        <button id="saveLogoBtn" class="secondary" type="button">Save</button>
-        <span id="logoStatus" aria-live="polite"></span>
-      </div>
-      <div class="hint">Applies to every event, not just this one — used on the projector footer and PDF reports. A GitHub-hosted image (same repo as this site) loads fastest and avoids cross-origin issues.</div>
     </details>
 
     <div class="toolbar">
       <input id="searchBox" type="search" placeholder="Filter by text or name…" autocomplete="off">
-      <button id="adminAccessBtn" class="secondary" type="button">🔐 Admin Access</button>
+      <button id="adminAccessBtn" class="secondary" type="button">🔐 Admin Settings</button>
       <button id="exportBtn" class="secondary" type="button">📄 Export PDF Report</button>
       <button id="refreshBtn" class="secondary" type="button">Refresh</button>
       <button id="logoutBtn" class="secondary" type="button">Lock</button>
@@ -206,15 +196,50 @@
 
 <dialog id="adminDialog" aria-labelledby="adminDialogTitle">
   <div class="admin-modal">
-    <h2 id="adminDialogTitle">🔐 Admin Access</h2>
-    <p>Separate from your moderator password. Grants a one-time link to the live Google Sheet (QnA_Master / Audit_Log) for this event.</p>
-    <label for="adminSecretInput">Admin password</label>
-    <input id="adminSecretInput" type="password" autocomplete="off">
-    <div id="adminDialogError" class="error" aria-live="polite"></div>
-    <div class="admin-modal-actions">
-      <button id="adminCancelBtn" class="secondary" type="button">Cancel</button>
-      <button id="adminSubmitBtn" class="primary" type="button" style="margin-top:0">Unlock</button>
+
+    <div id="adminPasswordView">
+      <h2 id="adminDialogTitle">🔐 Admin Settings</h2>
+      <p>Separate from your moderator password. Unlocks institution branding settings and the live Google Sheet (QnA_Master / Audit_Log).</p>
+      <label for="adminSecretInput">Admin password</label>
+      <input id="adminSecretInput" type="password" autocomplete="off">
+      <div id="adminDialogError" class="error" aria-live="polite"></div>
+      <div class="admin-modal-actions">
+        <button id="adminCancelBtn" class="secondary" type="button">Cancel</button>
+        <button id="adminSubmitBtn" class="primary" type="button" style="margin-top:0">Unlock</button>
+      </div>
     </div>
+
+    <div id="adminSettingsView" hidden>
+      <h2>🔐 Admin Settings</h2>
+      <p>Applies to every event, not just this one.</p>
+
+      <label for="logoUrlInput">🏫 Institution Logo URL</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="logoUrlInput" type="url" maxlength="300" style="flex:1"
+               placeholder="https://jsdelacruzbiscast.github.io/ehapot/assets/biscast-logo.png">
+        <img id="logoPreview" alt="" hidden style="width:30px;height:30px;object-fit:contain;border-radius:6px;flex:0 0 auto">
+      </div>
+      <div class="admin-modal-actions" style="margin-top:8px">
+        <button id="saveLogoBtn" class="secondary" type="button" style="flex:0 0 auto">Save Logo</button>
+        <span id="logoStatus" aria-live="polite" style="align-self:center"></span>
+      </div>
+
+      <label for="institutionNameInput" style="margin-top:16px">🏛️ Institution Name</label>
+      <input id="institutionNameInput" type="text" maxlength="150"
+             placeholder="e.g. BISCAST Student Development Services">
+      <div class="admin-modal-actions" style="margin-top:8px">
+        <button id="saveNameBtn" class="secondary" type="button" style="flex:0 0 auto">Save Name</button>
+        <span id="nameStatus" aria-live="polite" style="align-self:center"></span>
+      </div>
+
+      <label style="margin-top:16px">📊 Database</label>
+      <button id="openSheetBtn" class="primary" type="button" style="margin-top:0;width:100%">Open QnA_Master / Audit_Log</button>
+
+      <div class="admin-modal-actions" style="margin-top:16px">
+        <button id="adminCloseBtn" class="secondary" type="button" style="width:100%">Close</button>
+      </div>
+    </div>
+
   </div>
 </dialog>
 
@@ -333,37 +358,64 @@
   });
 
   // ------------------------------------------------------------------
-  // Admin Access (v2.4.1): a second, separate credential tier gating the
-  // raw Google Sheet link. Holding the moderator password alone no longer
-  // reveals it — see verifyAdmin_ in Code.gs. The URL is cached in memory
-  // only (never localStorage) and cleared on logout, so re-entering the
-  // dashboard always re-prompts.
+  // Admin Settings (v2.4.4): a second, separate credential tier gating
+  // institution branding (logo, name) and the raw Google Sheet link.
+  // Holding the moderator password alone reveals none of this — see
+  // requireAdminSecret_ in Code.gs. The admin password itself is cached
+  // in memory only (never localStorage) once entered correctly, so
+  // saving the logo/name right after unlocking doesn't re-prompt — but
+  // everything resets on logout, so re-entering the dashboard always
+  // starts back at the password view.
   // ------------------------------------------------------------------
+  let adminUnlocked = false;
+  let cachedAdminSecret = null;
   let adminSheetUrl = null;
 
   const adminDialog = document.getElementById('adminDialog');
+  const adminPasswordView = document.getElementById('adminPasswordView');
+  const adminSettingsView = document.getElementById('adminSettingsView');
   const adminSecretInput = document.getElementById('adminSecretInput');
   const adminDialogError = document.getElementById('adminDialogError');
   const adminSubmitBtn = document.getElementById('adminSubmitBtn');
   const adminAccessBtn = document.getElementById('adminAccessBtn');
+  const logoUrlInput = document.getElementById('logoUrlInput');
+  const logoPreview = document.getElementById('logoPreview');
+  const saveLogoBtn = document.getElementById('saveLogoBtn');
+  const logoStatus = document.getElementById('logoStatus');
+  const institutionNameInput = document.getElementById('institutionNameInput');
+  const saveNameBtn = document.getElementById('saveNameBtn');
+  const nameStatus = document.getElementById('nameStatus');
+  const openSheetBtn = document.getElementById('openSheetBtn');
 
   function resetAdminAccess() {
+    adminUnlocked = false;
+    cachedAdminSecret = null;
     adminSheetUrl = null;
-    adminAccessBtn.textContent = '🔐 Admin Access';
+    adminAccessBtn.textContent = '🔐 Admin Settings';
+    adminPasswordView.hidden = false;
+    adminSettingsView.hidden = true;
+    logoUrlInput.value = '';
+    institutionNameInput.value = '';
+    updateLogoPreview('');
   }
 
-  adminAccessBtn.addEventListener('click', () => {
-    if (adminSheetUrl) {
-      window.open(adminSheetUrl, '_blank', 'noopener');
-      return;
+  function showAdminDialog() {
+    if (adminUnlocked) {
+      adminPasswordView.hidden = true;
+      adminSettingsView.hidden = false;
+    } else {
+      adminSecretInput.value = '';
+      adminDialogError.textContent = '';
+      adminPasswordView.hidden = false;
+      adminSettingsView.hidden = true;
     }
-    adminSecretInput.value = '';
-    adminDialogError.textContent = '';
     adminDialog.showModal();
-    adminSecretInput.focus();
-  });
+    (adminUnlocked ? logoUrlInput : adminSecretInput).focus();
+  }
 
+  adminAccessBtn.addEventListener('click', showAdminDialog);
   document.getElementById('adminCancelBtn').addEventListener('click', () => adminDialog.close());
+  document.getElementById('adminCloseBtn').addEventListener('click', () => adminDialog.close());
   adminDialog.addEventListener('click', e => { if (e.target === adminDialog) adminDialog.close(); });
   adminSecretInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitAdminAccess(); });
   adminSubmitBtn.addEventListener('click', submitAdminAccess);
@@ -382,10 +434,15 @@
 
     try {
       const data = await post({...authPayload('verifyAdmin'), adminSecret});
+      adminUnlocked = true;
+      cachedAdminSecret = adminSecret;
       adminSheetUrl = data.sheetUrl;
-      adminAccessBtn.textContent = '📊 Open Audit Log';
-      adminDialog.close();
-      window.open(adminSheetUrl, '_blank', 'noopener');
+      logoUrlInput.value = typeof data.institutionLogoUrl === 'string' ? data.institutionLogoUrl : '';
+      updateLogoPreview(logoUrlInput.value);
+      institutionNameInput.value = typeof data.institutionName === 'string' ? data.institutionName : '';
+      adminAccessBtn.textContent = '🔐 Admin Settings ✓';
+      adminPasswordView.hidden = true;
+      adminSettingsView.hidden = false;
     } catch (err) {
       adminDialogError.textContent = err.message || 'Could not verify admin password.';
     } finally {
@@ -393,6 +450,88 @@
       adminSubmitBtn.textContent = original;
     }
   }
+
+  openSheetBtn.addEventListener('click', () => {
+    if (adminSheetUrl) window.open(adminSheetUrl, '_blank', 'noopener');
+  });
+
+  function updateLogoPreview(url) {
+    if (url) {
+      logoPreview.src = url;
+      logoPreview.hidden = false;
+    } else {
+      logoPreview.hidden = true;
+      logoPreview.removeAttribute('src');
+    }
+  }
+  logoPreview.addEventListener('error', () => { logoPreview.hidden = true; });
+
+  // Read-only trackers, updated from every feed poll regardless of whether
+  // Admin Settings is unlocked — any moderator can generate a branded PDF,
+  // even though only an admin can change what the branding actually is.
+  // Deliberately NOT wired to the dialog's inputs: those are populated
+  // once at unlock time instead, so a background poll can never overwrite
+  // what an admin is mid-typing in the dialog.
+  let currentLogoUrl = '';
+  let currentInstitutionName = '';
+  function trackInstitutionBranding(feed) {
+    if (typeof feed.logoUrl === 'string') currentLogoUrl = feed.logoUrl;
+    if (typeof feed.institutionName === 'string') currentInstitutionName = feed.institutionName;
+  }
+
+  async function saveInstitutionLogo() {
+    const logoUrl = logoUrlInput.value.trim().slice(0, 300);
+    saveLogoBtn.disabled = true;
+    const original = saveLogoBtn.textContent;
+    saveLogoBtn.textContent = 'Saving…';
+    logoStatus.textContent = '';
+    logoStatus.className = '';
+    try {
+      const data = await post({...authPayload('setInstitutionLogo'), adminSecret: cachedAdminSecret, logoUrl});
+      currentLogoUrl = typeof data.logoUrl === 'string' ? data.logoUrl : logoUrl;
+      logoUrlInput.value = currentLogoUrl;
+      updateLogoPreview(currentLogoUrl);
+      logoStatus.textContent = 'Saved ✓';
+      logoStatus.className = 'success';
+    } catch (err) {
+      logoStatus.textContent = err.message || 'Could not save logo.';
+      logoStatus.className = 'error';
+    } finally {
+      saveLogoBtn.disabled = false;
+      saveLogoBtn.textContent = original;
+      setTimeout(() => { logoStatus.textContent = ''; logoStatus.className = ''; }, 4000);
+    }
+  }
+
+  saveLogoBtn.addEventListener('click', saveInstitutionLogo);
+  logoUrlInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveInstitutionLogo(); });
+
+  async function saveInstitutionName() {
+    const institutionName = institutionNameInput.value.trim().slice(0, 150);
+    saveNameBtn.disabled = true;
+    const original = saveNameBtn.textContent;
+    saveNameBtn.textContent = 'Saving…';
+    nameStatus.textContent = '';
+    nameStatus.className = '';
+    try {
+      const data = await post({...authPayload('setInstitutionName'), adminSecret: cachedAdminSecret, institutionName});
+      currentInstitutionName = typeof data.institutionName === 'string' ? data.institutionName : institutionName;
+      institutionNameInput.value = currentInstitutionName;
+      nameStatus.textContent = 'Saved ✓';
+      nameStatus.className = 'success';
+    } catch (err) {
+      nameStatus.textContent = err.message || 'Could not save institution name.';
+      nameStatus.className = 'error';
+    } finally {
+      saveNameBtn.disabled = false;
+      saveNameBtn.textContent = original;
+      setTimeout(() => { nameStatus.textContent = ''; nameStatus.className = ''; }, 4000);
+    }
+  }
+
+  saveNameBtn.addEventListener('click', saveInstitutionName);
+  institutionNameInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveInstitutionName(); });
+
 
   // ------------------------------------------------------------------
   // Event title (v2.4.0): configured here, displayed on the projector.
@@ -447,65 +586,6 @@
     if (e.key === 'Enter') { e.preventDefault(); saveEventTitle(); }
   });
 
-  // ------------------------------------------------------------------
-  // Institution Logo (v2.4.2): global, not per-PIN — one save applies to
-  // every event's PDF report / projector branding. Same server round-trip
-  // pattern as Event Title, just posted to a different action.
-  // ------------------------------------------------------------------
-  const logoUrlInput = document.getElementById('logoUrlInput');
-  const logoPreview = document.getElementById('logoPreview');
-  const saveLogoBtn = document.getElementById('saveLogoBtn');
-  const logoStatus = document.getElementById('logoStatus');
-  let currentLogoUrl = '';
-
-  function updateLogoPreview(url) {
-    if (url) {
-      logoPreview.src = url;
-      logoPreview.hidden = false;
-    } else {
-      logoPreview.hidden = true;
-      logoPreview.removeAttribute('src');
-    }
-  }
-  logoPreview.addEventListener('error', () => { logoPreview.hidden = true; });
-
-  function applyInstitutionLogo(url) {
-    if (typeof url !== 'string') return;
-    currentLogoUrl = url;
-    if (document.activeElement === logoUrlInput) return; // don't clobber while typing
-    logoUrlInput.value = url;
-    updateLogoPreview(url);
-  }
-
-  async function saveInstitutionLogo() {
-    const logoUrl = logoUrlInput.value.trim().slice(0, 300);
-    saveLogoBtn.disabled = true;
-    const original = saveLogoBtn.textContent;
-    saveLogoBtn.textContent = 'Saving…';
-    logoStatus.textContent = '';
-    logoStatus.className = '';
-    try {
-      const data = await post({...authPayload('setInstitutionLogo'), logoUrl});
-      currentLogoUrl = typeof data.logoUrl === 'string' ? data.logoUrl : logoUrl;
-      logoUrlInput.value = currentLogoUrl;
-      updateLogoPreview(currentLogoUrl);
-      logoStatus.textContent = 'Saved ✓';
-      logoStatus.className = 'success';
-    } catch (err) {
-      logoStatus.textContent = err.message || 'Could not save logo.';
-      logoStatus.className = 'error';
-    } finally {
-      saveLogoBtn.disabled = false;
-      saveLogoBtn.textContent = original;
-      setTimeout(() => { logoStatus.textContent = ''; logoStatus.className = ''; }, 4000);
-    }
-  }
-
-  saveLogoBtn.addEventListener('click', saveInstitutionLogo);
-  logoUrlInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); saveInstitutionLogo(); }
-  });
-
   function playChime() {
     try {
       if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -554,7 +634,7 @@
   function renderFeed(feed) {
     currentFeed = feed;
     applyEventTitle(feed.eventTitle);
-    applyInstitutionLogo(feed.logoUrl);
+    trackInstitutionBranding(feed);
     const pending = Array.isArray(feed.pending) ? feed.pending : [];
     const deck = Array.isArray(feed.onDeck) ? feed.onDeck : [];
     const air = feed.onAir || null;
@@ -836,7 +916,8 @@
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(140, 148, 163);
-      doc.text('Interactive Q&A Engine · BISCAST SDS', textX, 52);
+      const subtitle = currentInstitutionName.trim() || 'BISCAST Student Development Services';
+      doc.text(`Interactive Q&A Engine · ${subtitle}`, textX, 52);
 
       // Event name, second line, left.
       doc.setFont('helvetica', 'bold');
@@ -963,9 +1044,6 @@
     resetAdminAccess();
     document.getElementById('audienceLink').value = '';
     eventTitleInput.value = '';
-    logoUrlInput.value = '';
-    currentLogoUrl = '';
-    updateLogoPreview('');
     secretInput.value = '';
     searchTerm = '';
     document.getElementById('searchBox').value = '';
